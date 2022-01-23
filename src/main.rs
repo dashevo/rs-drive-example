@@ -1,19 +1,19 @@
-use std::time::{SystemTime};
-use std::io::Write;
-use std::num::ParseIntError;
-use std::collections::HashMap;
-use std::mem::transmute;
+use grovedb::{Element, Error};
+use indexmap::IndexMap;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
+use rocksdb::{OptimisticTransactionDB, Transaction};
+use rs_drive::common;
 use rs_drive::contract::{Contract, Document};
 use rs_drive::drive::Drive;
 use rs_drive::query::{DriveQuery, OrderClause};
-use rs_drive::common;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use grovedb::{Element, Error};
-use indexmap::IndexMap;
-use rocksdb::{OptimisticTransactionDB, Transaction};
+use std::collections::HashMap;
+use std::io::Write;
+use std::mem::transmute;
+use std::num::ParseIntError;
+use std::time::SystemTime;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,7 +41,6 @@ impl Person {
         }
     }
 
-
     fn random_people(count: u32, seed: Option<u64>) -> Vec<Self> {
         let first_names =
             common::text_file_strings("src/supporting_files/contract/family/first-names.txt");
@@ -52,12 +51,8 @@ impl Person {
         let mut vec: Vec<Person> = vec![];
 
         let mut rng = match seed {
-            None => {
-                rand::rngs::StdRng::from_entropy()
-            }
-            Some(seed_value) => {
-                rand::rngs::StdRng::seed_from_u64(seed_value)
-            }
+            None => rand::rngs::StdRng::from_entropy(),
+            Some(seed_value) => rand::rngs::StdRng::seed_from_u64(seed_value),
         };
 
         for _i in 0..count {
@@ -105,13 +100,13 @@ impl Person {
             .try_into()
             .expect("expected u8 value");
 
-        Person{
+        Person {
             id: document.id.clone(),
             owner_id: document.owner_id.clone(),
             first_name,
             middle_name,
             last_name,
-            age
+            age,
         }
     }
 
@@ -124,7 +119,12 @@ impl Person {
         drive.grove.commit_transaction(db_transaction);
     }
 
-    fn add_on_transaction(&self, mut drive: &mut Drive, contract: &Contract, db_transaction: &Transaction<OptimisticTransactionDB>) {
+    fn add_on_transaction(
+        &self,
+        mut drive: &mut Drive,
+        contract: &Contract,
+        db_transaction: &Transaction<OptimisticTransactionDB>,
+    ) {
         let value = serde_json::to_value(&self).expect("serialized person");
         let document_cbor =
             common::value_to_cbor(value, Some(rs_drive::drive::defaults::PROTOCOL_VERSION));
@@ -144,12 +144,18 @@ impl Person {
     }
 
     fn println(&self) {
-        println!("{} {} {} {} {}", bs58::encode(&self.id).into_string(), self.first_name, self.middle_name, self.last_name, self.age)
+        println!(
+            "{} {} {} {} {}",
+            bs58::encode(&self.id).into_string(),
+            self.first_name,
+            self.middle_name,
+            self.last_name,
+            self.age
+        )
     }
 }
 
 pub fn populate(count: u32, drive: &mut Drive, contract: &Contract) -> Result<(), Error> {
-
     let storage = drive.grove.storage();
     let db_transaction = storage.transaction();
     drive.grove.start_transaction();
@@ -163,13 +169,15 @@ pub fn populate(count: u32, drive: &mut Drive, contract: &Contract) -> Result<()
     Ok(())
 }
 
-fn prompt(name:&str) -> String {
+fn prompt(name: &str) -> String {
     let mut line = String::new();
     print!("{}", name);
     std::io::stdout().flush().unwrap();
-    std::io::stdin().read_line(&mut line).expect("Error: Could not read a line");
+    std::io::stdin()
+        .read_line(&mut line)
+        .expect("Error: Could not read a line");
 
-    return line.trim().to_string()
+    return line.trim().to_string();
 }
 
 fn print_welcome() {
@@ -190,10 +198,14 @@ fn print_options() {
     println!("### You have the following options: ###");
     println!("#######################################");
     println!();
-    println!("### pop <number>                                       - populate with number people");
+    println!(
+        "### pop <number>                                       - populate with number people"
+    );
     println!("### insert <firstName> <middleName> <lastName> <age>   - add a specific person");
     println!("### all <[sortBy1,sortBy2...]> <limit>                 - get all people sorted by defined fields");
-    println!("### query <sqlQuery>                                   - sql like query on the system");
+    println!(
+        "### query <sqlQuery>                                   - sql like query on the system"
+    );
     println!();
 }
 
@@ -225,7 +237,7 @@ fn prompt_insert(input: String, drive: &mut Drive, contract: &Contract) {
     if args.count() != 5 {
         println!("### ERROR! Four parameter should be provided");
     } else {
-        let split : Vec<String> = input.split_whitespace().map(|s| s.to_string()).collect();
+        let split: Vec<String> = input.split_whitespace().map(|s| s.to_string()).collect();
         let first_name = split.get(1).unwrap();
         let middle_name = split.get(2).unwrap();
         let last_name = split.get(3).unwrap();
@@ -233,7 +245,8 @@ fn prompt_insert(input: String, drive: &mut Drive, contract: &Contract) {
         match age_string.parse::<u8>() {
             Ok(age) => {
                 if age <= 150 {
-                    Person::new_with_random_ids(first_name, middle_name, last_name, age).add_single(drive, contract);
+                    Person::new_with_random_ids(first_name, middle_name, last_name, age)
+                        .add_single(drive, contract);
                 } else {
                     println!("### ERROR! Age must be under 150");
                 }
@@ -246,13 +259,19 @@ fn prompt_insert(input: String, drive: &mut Drive, contract: &Contract) {
 }
 
 fn all(order_by_strings: Vec<String>, limit: u16, drive: &mut Drive, contract: &Contract) {
-    let order_by: IndexMap<String, OrderClause> = order_by_strings.iter().map(|field| {
-        let field_string = String::from(field);
-        (field_string.clone(), OrderClause{
-            field: field_string.clone(),
-            ascending: true
+    let order_by: IndexMap<String, OrderClause> = order_by_strings
+        .iter()
+        .map(|field| {
+            let field_string = String::from(field);
+            (
+                field_string.clone(),
+                OrderClause {
+                    field: field_string.clone(),
+                    ascending: true,
+                },
+            )
         })
-    }).collect::<IndexMap<String, OrderClause>>();
+        .collect::<IndexMap<String, OrderClause>>();
     let person_document_type = contract
         .document_types
         .get("person")
@@ -267,7 +286,7 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &mut Drive, contract: &
         limit,
         order_by,
         start_at: None,
-        start_at_included: false
+        start_at_included: false,
     };
     let (results, skipped) = query
         .execute_no_proof(&mut drive.grove, None)
@@ -288,23 +307,21 @@ fn prompt_all(input: String, drive: &mut Drive, contract: &Contract) {
     if args.count() > 2 {
         println!("### ERROR! At max two parameters should be provided");
     } else {
-        let split : Vec<String> = input.split_whitespace().map(|s| s.to_string()).collect();
+        let split: Vec<String> = input.split_whitespace().map(|s| s.to_string()).collect();
         let arg0 = split.get(1);
         let arg1 = split.get(2);
         let (order_by_str_option, limit_str_option) = match arg1 {
-            None => { 
-                match arg0 {
-                    None => (None, None),
-                    Some(value) => {
-                        if value.starts_with("[") {
-                            (arg0, None)
-                        } else {
-                            (None, arg0)
-                        }
+            None => match arg0 {
+                None => (None, None),
+                Some(value) => {
+                    if value.starts_with("[") {
+                        (arg0, None)
+                    } else {
+                        (None, arg0)
                     }
                 }
             },
-            Some(_) => (arg0, arg1)
+            Some(_) => (arg0, arg1),
         };
         let mut limit = 10000;
         if limit_str_option.is_some() {
@@ -321,7 +338,7 @@ fn prompt_all(input: String, drive: &mut Drive, contract: &Contract) {
                 }
             }
         }
-        let mut order_by : Vec<String> = vec![];
+        let mut order_by: Vec<String> = vec![];
         if order_by_str_option.is_some() {
             let order_by_str = order_by_str_option.unwrap().as_str();
             let mut chars = order_by_str.chars();
@@ -342,19 +359,17 @@ fn main() {
     );
     loop {
         print_options();
-        let input=prompt("> ");
+        let input = prompt("> ");
         if input.starts_with("pop ") {
             prompt_populate(input, &mut drive, &contract);
         } else if input.starts_with("all ") {
             prompt_all(input, &mut drive, &contract);
         } else if input.starts_with("insert ") {
             prompt_insert(input, &mut drive, &contract);
-        }
-        else if input.starts_with("query ") {
+        } else if input.starts_with("query ") {
             println!("not yet supported")
             //prompt_query(input, &mut drive, &contract);
-        }
-        else if input=="exit" {
+        } else if input == "exit" {
             break;
         };
     }
