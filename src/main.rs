@@ -304,7 +304,7 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &mut Drive, contract: &
 
 fn prompt_all(input: String, drive: &mut Drive, contract: &Contract) {
     let args = input.split_whitespace();
-    if args.count() > 2 {
+    if args.count() > 3 {
         println!("### ERROR! At max two parameters should be provided");
     } else {
         let split: Vec<String> = input.split_whitespace().map(|s| s.to_string()).collect();
@@ -346,6 +346,9 @@ fn prompt_all(input: String, drive: &mut Drive, contract: &Contract) {
             chars.next_back();
             order_by = chars.as_str().split(",").map(|s| s.to_string()).collect();
         }
+        if order_by.len() == 0 {
+            order_by = vec!["firstName".to_string()];
+        }
         all(order_by, limit, drive, contract);
     }
 }
@@ -362,7 +365,7 @@ fn main() {
         let input = prompt("> ");
         if input.starts_with("pop ") {
             prompt_populate(input, &mut drive, &contract);
-        } else if input.starts_with("all ") {
+        } else if input.starts_with("all") {
             prompt_all(input, &mut drive, &contract);
         } else if input.starts_with("insert ") {
             prompt_insert(input, &mut drive, &contract);

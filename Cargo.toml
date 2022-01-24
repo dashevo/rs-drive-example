@@ -20,8 +20,8 @@ rocksdb = { git = "https://github.com/yiyuanliu/rust-rocksdb", branch = "transac
 
 [dependencies.rs-drive]
 git = "https://github.com/dashevo/rs-drive"
-branch = "improvement/betterIndexMatching"
+branch = "master"
 
 [dependencies.grovedb]
 git = "https://github.com/dashevo/grovedb"
-branch = "feat/queryLevelOrdering"
+branch = "master"

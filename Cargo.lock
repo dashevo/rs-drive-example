@@ -369,10 +369,24 @@ source = "git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering#
 dependencies = [
  "bincode",
  "hex",
- "merk",
+ "merk 1.0.0 (git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering)",
  "rs_merkle",
  "serde",
- "storage",
+ "storage 0.1.0 (git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering)",
+ "tempdir",
+ "thiserror",
+]
+
+[[package]]
+name = "grovedb"
+version = "0.1.0"
+source = "git+https://github.com/dashevo/grovedb?branch=master#1563eaf9255c2035c38cf6784ddefbbda6e22639"
+dependencies = [
+ "bincode",
+ "merk 1.0.0 (git+https://github.com/dashevo/grovedb?branch=master)",
+ "rs_merkle",
+ "serde",
+ "storage 0.1.0 (git+https://github.com/dashevo/grovedb?branch=master)",
  "tempdir",
  "thiserror",
 ]
@@ -540,7 +554,29 @@ dependencies = [
  "num_cpus",
  "rand 0.8.4",
  "rocksdb",
- "storage",
+ "storage 0.1.0 (git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering)",
+ "tempdir",
+ "thiserror",
+ "time",
+]
+
+[[package]]
+name = "merk"
+version = "1.0.0"
+source = "git+https://github.com/dashevo/grovedb?branch=master#1563eaf9255c2035c38cf6784ddefbbda6e22639"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "byteorder",
+ "colored",
+ "ed",
+ "failure",
+ "hex",
+ "jemallocator",
+ "num_cpus",
+ "rand 0.8.4",
+ "rocksdb",
+ "storage 0.1.0 (git+https://github.com/dashevo/grovedb?branch=master)",
  "tempdir",
  "thiserror",
  "time",
@@ -767,21 +803,21 @@ dependencies = [
 [[package]]
 name = "rs-drive"
 version = "0.1.0"
-source = "git+https://github.com/dashevo/rs-drive?branch=improvement/betterIndexMatching#4730dd3fd4a632c555199050b2a6b69eaabcd0cc"
+source = "git+https://github.com/dashevo/rs-drive?branch=master#b38a44b8324023134e6807f5d23c0e9fd734e7f6"
 dependencies = [
  "array_tool",
  "base64",
  "bs58",
  "byteorder",
  "ciborium",
- "grovedb",
+ "grovedb 0.1.0 (git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering)",
  "hex",
  "indexmap",
  "rand 0.8.4",
  "rand_distr",
  "serde",
  "serde_json",
- "storage",
+ "storage 0.1.0 (git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering)",
  "tempdir",
 ]
 
@@ -791,7 +827,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "bs58",
- "grovedb",
+ "grovedb 0.1.0 (git+https://github.com/dashevo/grovedb?branch=master)",
  "hex",
  "indexmap",
  "rand 0.8.4",
@@ -900,6 +936,17 @@ dependencies = [
 name = "storage"
 version = "0.1.0"
 source = "git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering#372b9f950e136456258c9b57f70c727d70011489"
+dependencies = [
+ "num_cpus",
+ "rocksdb",
+ "tempdir",
+ "thiserror",
+]
+
+[[package]]
+name = "storage"
+version = "0.1.0"
+source = "git+https://github.com/dashevo/grovedb?branch=master#1563eaf9255c2035c38cf6784ddefbbda6e22639"
 dependencies = [
  "num_cpus",
  "rocksdb",
