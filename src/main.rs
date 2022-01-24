@@ -293,7 +293,7 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &mut Drive, contract: &
         start_at: None,
         start_at_included: false,
     };
-    let (results, skipped) = query
+    let (results, _) = query
         .execute_no_proof(&mut drive.grove, None)
         .expect("proof should be executed");
     let people: Vec<Person> = results
