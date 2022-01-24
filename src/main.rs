@@ -1,4 +1,4 @@
-use grovedb::{Element, Error};
+use grovedb::Error;
 use indexmap::IndexMap;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
@@ -8,11 +8,7 @@ use rs_drive::contract::{Contract, Document};
 use rs_drive::drive::Drive;
 use rs_drive::query::{DriveQuery, OrderClause};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use std::collections::HashMap;
 use std::io::Write;
-use std::mem::transmute;
-use std::num::ParseIntError;
 use std::time::SystemTime;
 
 #[derive(Serialize, Deserialize)]
@@ -102,7 +98,7 @@ impl Person {
 
         Person {
             id: document.id.clone(),
-            owner_id: document.owner_id.clone(),
+            owner_id: document.owner_id,
             first_name,
             middle_name,
             last_name,
@@ -110,7 +106,7 @@ impl Person {
         }
     }
 
-    fn add_single(&self, mut drive: &mut Drive, contract: &Contract) {
+    fn add_single(&self, drive: &mut Drive, contract: &Contract) {
         let storage = drive.grove.storage();
         let db_transaction = storage.transaction();
         drive.grove.start_transaction();
@@ -121,7 +117,7 @@ impl Person {
 
     fn add_on_transaction(
         &self,
-        mut drive: &mut Drive,
+        drive: &mut Drive,
         contract: &Contract,
         db_transaction: &Transaction<OptimisticTransactionDB>,
     ) {
@@ -134,7 +130,7 @@ impl Person {
             .add_document_for_contract(
                 &document,
                 &document_cbor,
-                &contract,
+                contract,
                 "person",
                 None,
                 true,
@@ -210,28 +206,24 @@ fn print_options() {
 }
 
 fn prompt_populate(input: String, drive: &mut Drive, contract: &Contract) {
-    let args = input.split_whitespace();
-    if args.count() != 2 {
+    let args: Vec<&str> = input.split_whitespace().collect();
+    if args.len() != 2 {
         println!("### ERROR! Only one parameter should be provided");
-    } else {
-        let count_str = input.split_whitespace().last();
-        if count_str.is_some() {
-            match count_str.unwrap().parse::<u32>() {
-                Ok(value) => {
-                    if value > 0 && value <= 5000 {
-                        let start_time = SystemTime::now();
-                        populate(value, drive, contract);
-                        match SystemTime::now().duration_since(start_time) {
-                            Ok(n) => println!("Time taken: {}", n.as_secs_f64()),
-                            _ => (),
-                        }
-                    } else {
-                        println!("### ERROR! Value must be between 1 and 1000");
+    } else if let Some(count_str) = args.last() {
+        match count_str.parse::<u32>() {
+            Ok(value) => {
+                if value > 0 && value <= 5000 {
+                    let start_time = SystemTime::now();
+                    populate(value, drive, contract).expect("populate returned an error");
+                    if let Ok(n) = SystemTime::now().duration_since(start_time) {
+                        println!("Time taken: {}", n.as_secs_f64());
                     }
+                } else {
+                    println!("### ERROR! Value must be between 1 and 1000");
                 }
-                Err(_) => {
-                    println!("### ERROR! An integer was not provided");
-                }
+            }
+            Err(_) => {
+                println!("### ERROR! An integer was not provided");
             }
         }
     }
@@ -271,7 +263,7 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &mut Drive, contract: &
             (
                 field_string.clone(),
                 OrderClause {
-                    field: field_string.clone(),
+                    field: field_string,
                     ascending: true,
                 },
             )
@@ -319,7 +311,7 @@ fn prompt_all(input: String, drive: &mut Drive, contract: &Contract) {
             None => match arg0 {
                 None => (None, None),
                 Some(value) => {
-                    if value.starts_with("[") {
+                    if value.starts_with('[') {
                         (arg0, None)
                     } else {
                         (None, arg0)
@@ -329,8 +321,8 @@ fn prompt_all(input: String, drive: &mut Drive, contract: &Contract) {
             Some(_) => (arg0, arg1),
         };
         let mut limit = 10000;
-        if limit_str_option.is_some() {
-            match limit_str_option.unwrap().parse::<u16>() {
+        if let Some(limit_str) = limit_str_option {
+            match limit_str.parse::<u16>() {
                 Ok(value) => {
                     if value > 0 && value <= 10000 {
                         limit = value
@@ -344,14 +336,14 @@ fn prompt_all(input: String, drive: &mut Drive, contract: &Contract) {
             }
         }
         let mut order_by: Vec<String> = vec![];
-        if order_by_str_option.is_some() {
-            let order_by_str = order_by_str_option.unwrap().as_str();
+        if let Some(order_by_string) = order_by_str_option {
+            let order_by_str = order_by_string.as_str();
             let mut chars = order_by_str.chars();
             chars.next();
             chars.next_back();
-            order_by = chars.as_str().split(",").map(|s| s.to_string()).collect();
+            order_by = chars.as_str().split(',').map(|s| s.to_string()).collect();
         }
-        if order_by.len() == 0 {
+        if order_by.is_empty() {
             order_by = vec!["firstName".to_string()];
         }
         all(order_by, limit, drive, contract);
