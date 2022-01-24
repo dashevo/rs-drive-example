@@ -202,6 +202,7 @@ fn print_options() {
         "### pop <number>                                       - populate with number people"
     );
     println!("### insert <firstName> <middleName> <lastName> <age>   - add a specific person");
+    println!("### delete <id>                                        - remove a person by id");
     println!("### all <[sortBy1,sortBy2...]> <limit>                 - get all people sorted by defined fields");
     println!(
         "### query <sqlQuery>                                   - sql like query on the system"
@@ -254,6 +255,24 @@ fn prompt_insert(input: String, drive: &mut Drive, contract: &Contract) {
             Err(_) => {
                 println!("### ERROR! An integer was not provided");
             }
+        }
+    }
+}
+
+fn prompt_delete(input: String, drive: &mut Drive, contract: &Contract) {
+    let args = input.split_whitespace();
+    if args.count() != 2 {
+        println!("### ERROR! Four parameter should be provided");
+    } else {
+        let split: Vec<String> = input.split_whitespace().map(|s| s.to_string()).collect();
+        let id_bs58 = split.get(1).unwrap().as_str();
+        let id = bs58::decode(id_bs58).into_vec();
+        if id.is_err() {
+            println!("### ERROR! Could not decode id");
+        }
+        let id = id.unwrap();
+        if drive.delete_document_for_contract(id.as_slice(), contract, "person", None, None).is_err() {
+            println!("### ERROR! Could not delete document");
         }
     }
 }
@@ -369,6 +388,8 @@ fn main() {
             prompt_all(input, &mut drive, &contract);
         } else if input.starts_with("insert ") {
             prompt_insert(input, &mut drive, &contract);
+        } else if input.starts_with("delete ") {
+            prompt_delete(input, &mut drive, &contract);
         } else if input.starts_with("query ") {
             println!("not yet supported")
             //prompt_query(input, &mut drive, &contract);
