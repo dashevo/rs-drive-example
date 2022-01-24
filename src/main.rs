@@ -116,9 +116,10 @@ impl Person {
         }
 
         self.add_on_transaction(drive, contract, &db_transaction);
-        if drive.grove.commit_transaction(db_transaction).is_err() {
+        drive.grove.commit_transaction(db_transaction).map_err(|err| {
             println!("### ERROR! Unable to commit transaction");
-        }
+            println!("### Info {:?}", err);
+        });
     }
 
     fn add_on_transaction(
