@@ -218,8 +218,13 @@ fn prompt_populate(input: String, drive: &mut Drive, contract: &Contract) {
         if count_str.is_some() {
             match count_str.unwrap().parse::<u32>() {
                 Ok(value) => {
-                    if value > 0 && value <= 1000 {
+                    if value > 0 && value <= 5000 {
+                        let start_time = SystemTime::now();
                         populate(value, drive, contract);
+                        match SystemTime::now().duration_since(start_time) {
+                            Ok(n) => println!("Time taken: {}", n.as_secs_f64()),
+                            _ => (),
+                        }
                     } else {
                         println!("### ERROR! Value must be between 1 and 1000");
                     }
