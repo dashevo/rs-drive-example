@@ -109,10 +109,14 @@ impl Person {
     fn add_single(&self, drive: &mut Drive, contract: &Contract) {
         let storage = drive.grove.storage();
         let db_transaction = storage.transaction();
-        drive.grove.start_transaction();
+        if drive.grove.start_transaction().is_err() {
+            println!("### ERROR! Unable to start transaction");
+        }
 
         self.add_on_transaction(drive, contract, &db_transaction);
-        drive.grove.commit_transaction(db_transaction);
+        if drive.grove.commit_transaction(db_transaction).is_err() {
+            println!("### ERROR! Unable to commit transaction");
+        }
     }
 
     fn add_on_transaction(
