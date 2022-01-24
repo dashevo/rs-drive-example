@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use grovedb::Error;
 use indexmap::IndexMap;
 use rand::seq::SliceRandom;
@@ -9,6 +10,7 @@ use rs_drive::drive::Drive;
 use rs_drive::query::{DriveQuery, OrderClause};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
+use std::{thread, time};
 use std::time::SystemTime;
 
 #[derive(Serialize, Deserialize)]
@@ -380,6 +382,15 @@ fn main() {
         "family",
         "src/supporting_files/contract/family/family-contract.json",
     );
+
+    let input = "pop 1".to_string();
+    let input2 = "insert 1 1 1 85".to_string();
+    for i in 0..90 {
+        println!("popped {}", i);
+        prompt_populate(input.clone(),  &mut drive, &contract);
+    }
+    prompt_insert(input2.clone(), &mut drive, &contract);
+    return;
     loop {
         print_options();
         let input = prompt("> ");
