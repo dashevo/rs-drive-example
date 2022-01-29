@@ -3,7 +3,7 @@ use grovedb::Error;
 use indexmap::IndexMap;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
-use rocksdb::{OptimisticTransactionDB, Transaction};
+use rocksdb::{DB, OptimisticTransactionDB, Transaction};
 use rs_drive::common;
 use rs_drive::contract::{Contract, Document};
 use rs_drive::drive::Drive;
@@ -40,12 +40,12 @@ impl Person {
     }
 
     fn random_people(count: u32, seed: Option<u64>) -> Vec<Self> {
-        let first_names =
-            common::text_file_strings("src/supporting_files/contract/family/first-names.txt");
-        let middle_names =
-            common::text_file_strings("src/supporting_files/contract/family/middle-names.txt");
-        let last_names =
-            common::text_file_strings("src/supporting_files/contract/family/last-names.txt");
+        // let first_names =
+        //     common::text_file_strings("src/supporting_files/contract/family/first-names.txt");
+        // let middle_names =
+        //     common::text_file_strings("src/supporting_files/contract/family/middle-names.txt");
+        // let last_names =
+        //     common::text_file_strings("src/supporting_files/contract/family/last-names.txt");
         let mut vec: Vec<Person> = vec![];
 
         let mut rng = match seed {
@@ -57,10 +57,10 @@ impl Person {
             let person = Person {
                 id: Vec::from(rng.gen::<[u8; 32]>()),
                 owner_id: Vec::from(rng.gen::<[u8; 32]>()),
-                first_name: first_names.choose(&mut rng).unwrap().clone(),
-                middle_name: middle_names.choose(&mut rng).unwrap().clone(),
-                last_name: last_names.choose(&mut rng).unwrap().clone(),
-                age: rng.gen_range(0..85),
+                first_name: 1.to_string(),
+                middle_name: 1.to_string(),
+                last_name: 1.to_string(),
+                age: 1,
             };
             vec.push(person);
         }
@@ -116,10 +116,11 @@ impl Person {
         }
 
         self.add_on_transaction(drive, contract, &db_transaction);
-        drive.grove.commit_transaction(db_transaction).map_err(|err| {
-            println!("### ERROR! Unable to commit transaction");
-            println!("### Info {:?}", err);
-        });
+        drive.grove.commit_transaction(db_transaction).expect("commit_transaction add_single error");
+            // .map_err(|err| {
+            // println!("### ERROR! Unable to commit transaction");
+            // println!("### Info {:?}", err);
+        // });
     }
 
     fn add_on_transaction(
@@ -167,7 +168,7 @@ pub fn populate(count: u32, drive: &mut Drive, contract: &Contract) -> Result<()
     for person in people {
         person.add_on_transaction(drive, contract, &db_transaction);
     }
-    drive.grove.commit_transaction(db_transaction);
+    drive.grove.commit_transaction(db_transaction).expect("commit_transaction failed");
 
     Ok(())
 }
@@ -250,8 +251,12 @@ fn prompt_insert(input: String, drive: &mut Drive, contract: &Contract) {
         match age_string.parse::<u8>() {
             Ok(age) => {
                 if age <= 150 {
+                    let start_time = SystemTime::now();
                     Person::new_with_random_ids(first_name, middle_name, last_name, age)
                         .add_single(drive, contract);
+                    if let Ok(n) = SystemTime::now().duration_since(start_time) {
+                        println!("Time taken: {}", n.as_secs_f64());
+                    }
                 } else {
                     println!("### ERROR! Age must be under 150");
                 }
@@ -384,13 +389,13 @@ fn main() {
         "src/supporting_files/contract/family/family-contract.json",
     );
 
-    let input = "pop 1".to_string();
-    let input2 = "insert 1 1 1 85".to_string();
-    for i in 0..90 {
+    let input = "pop 100".to_string();
+    let input2 = "insert Hello WOrld Test 85".to_string();
+    for i in 0..10_000 {
         println!("popped {}", i);
-        prompt_populate(input.clone(),  &mut drive, &contract);
+        prompt_insert(input2.clone(), &mut drive, &contract);
     }
-    prompt_insert(input2.clone(), &mut drive, &contract);
+    prompt_populate(input.clone(),  &mut drive, &contract);
     return;
     loop {
         print_options();

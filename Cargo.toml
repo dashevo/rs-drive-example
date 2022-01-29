@@ -20,8 +20,10 @@ rocksdb = { git = "https://github.com/yiyuanliu/rust-rocksdb", branch = "transac
 
 [dependencies.rs-drive]
 git = "https://github.com/dashevo/rs-drive"
-branch = "master"
+branch = "develop"
+#branch = "feat/sqlQuerying"
 
 [dependencies.grovedb]
 git = "https://github.com/dashevo/grovedb"
 branch = "master"
+#branch = "feat/subtree-refcell"
