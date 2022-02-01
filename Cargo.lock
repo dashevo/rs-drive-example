@@ -42,6 +42,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
+name = "arrayvec"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -60,9 +66,9 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "backtrace"
-version = "0.3.63"
+version = "0.3.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "321629d8ba6513061f26707241fa9bc89524ff1cd7a915a97ef0c62c666ce1b6"
+checksum = "5e121dee8023ce33ab248d9ce1493df03c3b38a659b240096fcbd7048ff9c31f"
 dependencies = [
  "addr2line",
  "cc",
@@ -120,12 +126,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b64485778c4f16a6a5a9d335e80d449ac6c70cdd6a06d2af18a6f6f775a125b3"
 dependencies = [
  "arrayref",
- "arrayvec",
+ "arrayvec 0.5.2",
  "cc",
  "cfg-if 0.1.10",
  "constant_time_eq",
  "crypto-mac",
- "digest",
+ "digest 0.9.0",
+]
+
+[[package]]
+name = "blake3"
+version = "1.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a08e53fc5a564bb15bfe6fae56bd71522205f1f91893f9c0116edad6496c183f"
+dependencies = [
+ "arrayref",
+ "arrayvec 0.7.2",
+ "cc",
+ "cfg-if 1.0.0",
+ "constant_time_eq",
+ "digest 0.10.1",
 ]
 
 [[package]]
@@ -133,6 +153,15 @@ name = "block-buffer"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4152116fd6e9dadb291ae18fc1ec3575ed6d84c29642d97890f4b4a3417297e4"
+dependencies = [
+ "generic-array",
+]
+
+[[package]]
+name = "block-buffer"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1d36a02058e76b040de25a4464ba1c80935655595b661505c8b39b664828b95"
 dependencies = [
  "generic-array",
 ]
@@ -255,6 +284,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crypto-common"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "683d6b536309245c849479fba3da410962a43ed8e51c26b729208ec0ac2798d0"
+dependencies = [
+ "generic-array",
+]
+
+[[package]]
 name = "crypto-mac"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -271,6 +309,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3dd60d1080a57a05ab032377049e0591415d2b31afd7028356dbf3cc6dcb066"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "digest"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b697d66081d42af4fba142d56918a3cb21dc8eb63372c6b85d14f44fb9c5979b"
+dependencies = [
+ "block-buffer 0.10.0",
+ "crypto-common",
+ "generic-array",
+ "subtle",
 ]
 
 [[package]]
@@ -364,29 +414,16 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "grovedb"
-version = "0.1.0"
-source = "git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering#372b9f950e136456258c9b57f70c727d70011489"
+version = "0.3.1"
+source = "git+https://github.com/dashevo/grovedb?branch=master#3eb9076adc5249dce3b82e0593b4b117a7624aaa"
 dependencies = [
  "bincode",
+ "blake3 1.3.1",
  "hex",
- "merk 1.0.0 (git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering)",
+ "merk",
  "rs_merkle",
  "serde",
- "storage 0.1.0 (git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering)",
- "tempdir",
- "thiserror",
-]
-
-[[package]]
-name = "grovedb"
-version = "0.1.0"
-source = "git+https://github.com/dashevo/grovedb?branch=master#1563eaf9255c2035c38cf6784ddefbbda6e22639"
-dependencies = [
- "bincode",
- "merk 1.0.0 (git+https://github.com/dashevo/grovedb?branch=master)",
- "rs_merkle",
- "serde",
- "storage 0.1.0 (git+https://github.com/dashevo/grovedb?branch=master)",
+ "storage",
  "tempdir",
  "thiserror",
 ]
@@ -478,9 +515,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.113"
+version = "0.2.116"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eef78b64d87775463c549fbd80e19249ef436ea3bf1de2a1eb7e717ec7fab1e9"
+checksum = "565dbd88872dbe4cc8a46e527f26483c1d1f7afa6b884a3bd6cd893d4f98da74"
 
 [[package]]
 name = "libloading"
@@ -541,10 +578,10 @@ checksum = "308cc39be01b73d0d18f82a0e7b2a3df85245f84af96fdddc5d202d27e47b86a"
 [[package]]
 name = "merk"
 version = "1.0.0"
-source = "git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering#372b9f950e136456258c9b57f70c727d70011489"
+source = "git+https://github.com/dashevo/grovedb?branch=master#3eb9076adc5249dce3b82e0593b4b117a7624aaa"
 dependencies = [
  "anyhow",
- "blake3",
+ "blake3 0.3.8",
  "byteorder",
  "colored",
  "ed",
@@ -554,29 +591,7 @@ dependencies = [
  "num_cpus",
  "rand 0.8.4",
  "rocksdb",
- "storage 0.1.0 (git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering)",
- "tempdir",
- "thiserror",
- "time",
-]
-
-[[package]]
-name = "merk"
-version = "1.0.0"
-source = "git+https://github.com/dashevo/grovedb?branch=master#1563eaf9255c2035c38cf6784ddefbbda6e22639"
-dependencies = [
- "anyhow",
- "blake3",
- "byteorder",
- "colored",
- "ed",
- "failure",
- "hex",
- "jemallocator",
- "num_cpus",
- "rand 0.8.4",
- "rocksdb",
- "storage 0.1.0 (git+https://github.com/dashevo/grovedb?branch=master)",
+ "storage",
  "tempdir",
  "thiserror",
  "time",
@@ -626,6 +641,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19e64526ebdee182341572e50e9ad03965aa510cd94427a4549448f285e957a1"
 dependencies = [
  "hermit-abi",
+ "libc",
+]
+
+[[package]]
+name = "num_threads"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97ba99ba6393e2c3734791401b66902d981cb03bf190af674ca69949b6d5fb15"
+dependencies = [
  "libc",
 ]
 
@@ -803,21 +827,21 @@ dependencies = [
 [[package]]
 name = "rs-drive"
 version = "0.1.0"
-source = "git+https://github.com/dashevo/rs-drive?branch=master#b38a44b8324023134e6807f5d23c0e9fd734e7f6"
+source = "git+https://github.com/dashevo/rs-drive?branch=develop#43675319460a86f002bcccffd3ac9215459268af"
 dependencies = [
  "array_tool",
  "base64",
  "bs58",
  "byteorder",
  "ciborium",
- "grovedb 0.1.0 (git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering)",
+ "grovedb",
  "hex",
  "indexmap",
  "rand 0.8.4",
  "rand_distr",
  "serde",
  "serde_json",
- "storage 0.1.0 (git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering)",
+ "storage",
  "tempdir",
 ]
 
@@ -827,7 +851,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "bs58",
- "grovedb 0.1.0 (git+https://github.com/dashevo/grovedb?branch=master)",
+ "grovedb",
  "hex",
  "indexmap",
  "rand 0.8.4",
@@ -875,18 +899,18 @@ checksum = "aa62e15412784450a67f0f49cc3cfd295f3ac0c5cda05e8312f089040debda0c"
 
 [[package]]
 name = "serde"
-version = "1.0.135"
+version = "1.0.136"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cf9235533494ea2ddcdb794665461814781c53f19d87b76e571a1c35acbad2b"
+checksum = "ce31e24b01e1e524df96f1c2fdd054405f8d7376249a5110886fb4b658484789"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.135"
+version = "1.0.136"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8dcde03d87d4c973c04be249e7d8f0b35db1c848c487bd43032808e59dd8328d"
+checksum = "08597e7152fcd306f41838ed3e37be9eaeed2b61c42e2117266a554fab4662f9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -910,10 +934,10 @@ version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d58a1e1bf39749807d89cf2d98ac2dfa0ff1cb3faa38fbb64dd88ac8013d800"
 dependencies = [
- "block-buffer",
+ "block-buffer 0.9.0",
  "cfg-if 1.0.0",
  "cpufeatures",
- "digest",
+ "digest 0.9.0",
  "opaque-debug",
 ]
 
@@ -935,18 +959,7 @@ dependencies = [
 [[package]]
 name = "storage"
 version = "0.1.0"
-source = "git+https://github.com/dashevo/grovedb?branch=feat/queryLevelOrdering#372b9f950e136456258c9b57f70c727d70011489"
-dependencies = [
- "num_cpus",
- "rocksdb",
- "tempdir",
- "thiserror",
-]
-
-[[package]]
-name = "storage"
-version = "0.1.0"
-source = "git+https://github.com/dashevo/grovedb?branch=master#1563eaf9255c2035c38cf6784ddefbbda6e22639"
+source = "git+https://github.com/dashevo/grovedb?branch=master#3eb9076adc5249dce3b82e0593b4b117a7624aaa"
 dependencies = [
  "num_cpus",
  "rocksdb",
@@ -1015,13 +1028,12 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.1.44"
+version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6db9e6914ab8b1ae1c260a4ae7a49b6c5611b40328a735b21862567685e73255"
+checksum = "004cbc98f30fa233c61a38bc77e96a9106e65c88f2d3bef182ae952027e5753d"
 dependencies = [
  "libc",
- "wasi",
- "winapi",
+ "num_threads",
 ]
 
 [[package]]
@@ -1050,9 +1062,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "wasi"
-version = "0.10.0+wasi-snapshot-preview1"
+version = "0.10.2+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
+checksum = "fd6fbd9a79829dd1ad0cc20627bf1ed606756a7f77edff7b66b7064f9cb327c6"
 
 [[package]]
 name = "winapi"
