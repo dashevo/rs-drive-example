@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::default::Default;
 use grovedb::Error;
 use indexmap::IndexMap;
 use rand::seq::SliceRandom;
@@ -6,11 +8,15 @@ use rocksdb::{OptimisticTransactionDB, Transaction};
 use rs_drive::common;
 use rs_drive::contract::{Contract, Document};
 use rs_drive::drive::Drive;
-use rs_drive::query::{DriveQuery, OrderClause};
+use rs_drive::query::{DriveQuery, InternalClauses, OrderClause};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::time::SystemTime;
+use rustyline::config::Configurer;
+use rustyline::Editor;
+// use sqlparser::ast::ColumnOption::Default;
 use tempdir::TempDir;
+// use rdev::{listen, Event};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -98,8 +104,8 @@ impl Person {
             .expect("expected u8 value");
 
         Person {
-            id: document.id.clone(),
-            owner_id: document.owner_id,
+            id: document.id.to_vec(),
+            owner_id: document.owner_id.to_vec(),
             first_name,
             middle_name,
             last_name,
@@ -280,7 +286,26 @@ fn prompt_delete(input: String, drive: &mut Drive, contract: &Contract) {
     }
 }
 
+fn prompt_query(input: String, drive: &mut Drive, contract: &Contract) {
+    let query = DriveQuery::from_sql_expr(input.as_str(), &contract).expect("should build query");
+    let results = query.execute_no_proof(&mut drive.grove, None);
+    if let Ok((results, _)) = results {
+        let people: Vec<Person> = results
+            .into_iter()
+            .map(|result| {
+                let document = Document::from_cbor(result.as_slice(), None, None)
+                    .expect("we should be able to deserialize the cbor");
+                Person::from_document(document)
+            })
+            .collect();
+        people.iter().for_each(|person| person.println());
+    } else {
+        println!("invalid query, try again");
+    }
+}
+
 fn all(order_by_strings: Vec<String>, limit: u16, drive: &mut Drive, contract: &Contract) {
+    println!("{:?} {:?}", order_by_strings, limit);
     let order_by: IndexMap<String, OrderClause> = order_by_strings
         .iter()
         .map(|field| {
@@ -301,9 +326,11 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &mut Drive, contract: &
     let query = DriveQuery {
         contract,
         document_type: person_document_type,
-        equal_clauses: Default::default(),
-        in_clause: None,
-        range_clause: None,
+        internal_clauses: InternalClauses{
+            equal_clauses: Default::default(),
+            in_clause: None,
+            range_clause: None,
+        },
         offset: 0,
         limit,
         order_by,
@@ -313,6 +340,7 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &mut Drive, contract: &
     let (results, _) = query
         .execute_no_proof(&mut drive.grove, None)
         .expect("proof should be executed");
+    println!("result len: {}", results.len());
     let people: Vec<Person> = results
         .into_iter()
         .map(|result| {
@@ -381,28 +409,46 @@ fn main() {
     let tmp_dir = TempDir::new("family").unwrap();
     let mut drive: Drive = Drive::open(&tmp_dir).expect("expected to open Drive successfully");
 
+    let storage = drive.grove.storage();
+    let db_transaction = storage.transaction();
+
+    drive.create_root_tree(None).expect("expected to create root tree successfully");
+
+    drive.grove.start_transaction().unwrap();
+    // drive.grove.start_transaction();
     let contract = common::setup_contract(
         &mut drive,
         "src/supporting_files/contract/family/family-contract.json",
-        None,
+        Some(&db_transaction),
+        // None,
     );
+    // drive.grove.commit_transaction(db_transaction).unwrap();
+
+    let mut rl = rustyline::Editor::<()>::new();
+    rl.set_auto_add_history(true);
 
     loop {
         print_options();
-        let input = prompt("> ");
-        if input.starts_with("pop ") {
-            prompt_populate(input, &mut drive, &contract);
-        } else if input.starts_with("all") {
-            prompt_all(input, &mut drive, &contract);
-        } else if input.starts_with("insert ") {
-            prompt_insert(input, &mut drive, &contract);
-        } else if input.starts_with("delete ") {
-            prompt_delete(input, &mut drive, &contract);
-        } else if input.starts_with("query ") {
-            println!("not yet supported")
-            //prompt_query(input, &mut drive, &contract);
-        } else if input == "exit" {
-            break;
-        };
+
+        let readline = rl.readline("> ");
+        match readline {
+            Ok(input) => {
+                if input.starts_with("pop ") {
+                    prompt_populate(input, &mut drive, &contract);
+                } else if input.starts_with("all") {
+                    prompt_all(input, &mut drive, &contract);
+                } else if input.starts_with("insert ") {
+                    prompt_insert(input, &mut drive, &contract);
+                } else if input.starts_with("delete ") {
+                    prompt_delete(input, &mut drive, &contract);
+                } else if input.starts_with("select ") {
+                    // println!("not yet supported")
+                    prompt_query(input, &mut drive, &contract);
+                } else if input == "exit" {
+                    break;
+                };
+            },
+            Err(_) => println!("no input, try again"),
+        }
     }
 }
