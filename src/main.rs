@@ -10,6 +10,7 @@ use rs_drive::query::{DriveQuery, OrderClause};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::time::SystemTime;
+use tempdir::TempDir;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -377,10 +378,15 @@ fn prompt_all(input: String, drive: &mut Drive, contract: &Contract) {
 fn main() {
     print_welcome();
     // setup code
-    let (mut drive, contract) = common::setup_contract(
-        "family",
+    let tmp_dir = TempDir::new("family").unwrap();
+    let mut drive: Drive = Drive::open(&tmp_dir).expect("expected to open Drive successfully");
+
+    let contract = common::setup_contract(
+        &mut drive,
         "src/supporting_files/contract/family/family-contract.json",
+        None,
     );
+
     loop {
         print_options();
         let input = prompt("> ");
