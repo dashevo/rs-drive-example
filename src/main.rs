@@ -1,8 +1,12 @@
 pub mod person;
+mod contract;
 
 use std::collections::HashMap;
 use std::default::Default;
+use std::fs;
+use std::path::Path;
 use grovedb::Error;
+use rand::{Rng, SeedableRng};
 use rocksdb::{OptimisticTransactionDB, Transaction};
 use rs_drive::common;
 use rs_drive::contract::{Contract, Document, DocumentType};
@@ -11,8 +15,125 @@ use rs_drive::query::{DriveQuery, InternalClauses, OrderClause};
 use rustyline::config::Configurer;
 use rustyline::Editor;
 use tempdir::TempDir;
+use crate::contract::contract_loop;
 use crate::ContractType::{OtherContract, PersonContract};
 use crate::person::person_loop;
+
+pub const LAST_CONTRACT_PATH: &str = "last_contract_path";
+
+struct Explorer {
+    config: HashMap<String, String>
+}
+
+impl Explorer {
+    fn load_config() -> Self {
+        let path = Path::new("explorer.config");
+
+        let read_result = fs::read(path);
+        let config = match read_result {
+            Ok(data) => {
+                bincode::deserialize(&data).expect("config file is corrupted")
+            }
+            Err(_) => {
+                HashMap::new()
+            }
+        };
+        Explorer {
+            config
+        }
+    }
+
+    fn save_config(&self) {
+        let config = bincode::serialize(&self.config).expect("unable to serialize root leaves data");
+        let path = Path::new("explorer.config");
+
+        fs::write(path, config).unwrap();
+    }
+
+    fn load_last_contract(&self, drive: &Drive) -> Option<Contract> {
+        let last_contract_path = self.config.get(LAST_CONTRACT_PATH)?;
+        let db_transaction = drive.grove.start_transaction();
+
+        let mut rng = rand::rngs::StdRng::from_entropy();
+        let contract_id = rng.gen::<[u8; 32]>();
+        let contract = common::setup_contract(
+            &drive,
+            last_contract_path,
+            Some(contract_id),
+            Some(&db_transaction),
+        );
+        drive.grove.commit_transaction(db_transaction).ok();
+        Some(contract)
+    }
+
+    fn load_contract(&mut self, drive: &Drive, contract_path: &str) -> Result<Contract, Error> {
+        let db_transaction = drive.grove.start_transaction();
+
+        let mut rng = rand::rngs::StdRng::from_entropy();
+        let contract_id = rng.gen::<[u8; 32]>();
+        let contract = common::setup_contract(
+            &drive,
+            contract_path,
+            Some(contract_id),
+            Some(&db_transaction),
+        );
+        drive.grove.commit_transaction(db_transaction)?;
+        self.config.insert(LAST_CONTRACT_PATH.to_string(), contract_path.to_string());
+        self.save_config();
+        Ok(contract)
+    }
+
+    fn load_person_contract(&mut self, drive: &Drive) -> Result<Contract, Error> {
+        self.load_contract(drive, "src/supporting_files/contract/family/family-contract.json")
+    }
+
+    fn base_rl(&mut self, drive: &Drive, rl: &mut Editor<()>) -> (bool, Option<(ContractType, Contract)>) {
+        let readline = rl.readline("> ");
+        match readline {
+            Ok(input) => {
+                if input.eq("person") || input.eq("p") {
+                    (true, Some((PersonContract, self.load_person_contract(drive).expect("expected to load person contract"))))
+                } else if input == "l" || input.starts_with("load ") {
+                    match prompt_load_contract(input) {
+                        None => (true, None),
+                        Some(contract_path) => {
+                            match self.load_contract(drive, contract_path.as_str()) {
+                                Ok(contract) => {
+                                    (true, Some((OtherContract, contract)))
+                                }
+                                Err(_) => {
+                                    (true, None)
+                                }
+                            }
+                        }
+                    }
+                } else if input == "ll" || input == "loadlast" {
+                    match self.load_last_contract(drive) {
+                        Some(contract) => {
+                            (true, Some((OtherContract, contract)))
+                        }
+                        None => {
+                            (true, None)
+                        }
+                    }
+                } else if input == "exit" {
+                    (false, None)
+                } else {
+                    (true, None)
+                }
+            },
+            Err(_) => {
+                println!("no input, try again");
+                (true, None)
+            },
+        }
+    }
+
+    fn base_loop(&mut self, drive: &Drive, rl: &mut Editor<()>) -> (bool, Option<(ContractType, Contract)>) {
+        print_base_options();
+        self.base_rl(drive, rl)
+    }
+}
 
 enum ContractType {
     PersonContract,
@@ -37,10 +158,9 @@ fn print_base_options() {
     println!("### You have the following options : ###");
     println!("########################################");
     println!();
-    println!(
-        "### person / p - load the person contract"
-    );
+    println!("### person / p                      - load the person contract");
     println!("### load / l <contract file path>   - load a specific contract");
+    println!("### loadlast / ll                   - load the last loaded contract");
     println!();
 }
 
@@ -52,62 +172,6 @@ fn prompt_load_contract(input: String) -> Option<String> {
     } else {
         input.split_whitespace().last().map(|a| a.to_string())
     }
-}
-
-
-fn base_rl(drive: &Drive, mut rl: &mut Editor<()>) -> (bool, Option<(ContractType, Contract)>) {
-    let readline = rl.readline("> ");
-    match readline {
-        Ok(input) => {
-            if input.eq("person") || input.eq("p") {
-                (true, Some((PersonContract, load_person_contract(drive).expect("expected to load person contract"))))
-            } else if input.starts_with("l ") || input.starts_with("load ") {
-                match prompt_load_contract(input) {
-                    None => (true, None),
-                    Some(contract_path) => {
-                        match load_contract(drive, contract_path.as_str()) {
-                            Ok(contract) => {
-                                (true, Some((OtherContract, contract)))
-                            }
-                            Err(_) => {
-                                (true, None)
-                            }
-                        }
-                    }
-                }
-            } else if input == "exit" {
-                (false, None)
-            } else {
-                (true, None)
-            }
-        },
-        Err(_) => {
-            println!("no input, try again");
-            (true, None)
-        },
-    }
-}
-
-fn base_loop(drive: &Drive, mut rl: &mut Editor<()>) -> (bool, Option<(ContractType, Contract)>) {
-    print_base_options();
-    base_rl(drive, rl)
-}
-
-fn load_contract(drive: &Drive, contract_path: &str) -> Result<Contract, Error> {
-    let db_transaction = drive.grove.start_transaction();
-
-    let contract = common::setup_contract(
-        &drive,
-        contract_path,
-        Some(&db_transaction),
-    );
-    drive.grove.commit_transaction(db_transaction)?;
-
-    Ok(contract)
-}
-
-fn load_person_contract(drive: &Drive) -> Result<Contract, Error> {
-    load_contract(drive, "src/supporting_files/contract/family/family-contract.json")
 }
 
 fn main() {
@@ -123,6 +187,8 @@ fn main() {
 
     let mut current_contract : Option<(ContractType, Contract)> = None;
 
+    let mut explorer = Explorer::load_config();
+
     loop {
         if current_contract.is_some() {
             match &current_contract {
@@ -130,16 +196,24 @@ fn main() {
                 Some((contract_type, contract)) => {
                     match contract_type {
                         ContractType::PersonContract => {
-                            person_loop(&drive, contract, &mut rl);
+                            if !person_loop(&drive, contract, &mut rl) {
+                                current_contract = None;
+                            }
                         }
-                        ContractType::OtherContract => {}
+                        ContractType::OtherContract => {
+                            if !contract_loop(&drive, contract, &mut rl) {
+                                current_contract = None;
+                            }
+                        }
                     }
                 }
             }
         } else {
-            let base_result = base_loop(&drive, &mut rl);
+            let base_result = explorer.base_loop(&drive, &mut rl);
             match base_result.0 {
-                true => { current_contract = base_result.1 }
+                true => {
+                    current_contract = base_result.1;
+                }
                 false => { break }
             }
         }

@@ -189,22 +189,34 @@ fn prompt(name: &str) -> String {
     return line.trim().to_string();
 }
 
+fn print_contract_format(contract: &Contract) {
+    for (document_type_name, document_type) in contract.document_types.iter() {
+        println!("## {}", document_type_name);
+        for (propertyName, document_field_type) in document_type.properties.iter() {
+            println!("#### {} : {}", propertyName, document_field_type);
+        }
+    }
+}
 
-fn print_person_contract_options() {
+
+fn print_contract_options(contract: &Contract) {
     println!();
-    println!("##############################################################");
-    println!("### You have the following options in the person contract: ###");
-    println!("##############################################################");
+    println!("#########################################################");
+    println!("### You have the following options for this contract: ###");
+    println!("#########################################################");
     println!();
     println!(
-        "### pop <number>                                       - populate with number people"
+        "### view / v                                       - view contract structure"
     );
-    println!("### insert <firstName> <middleName> <lastName> <age>   - add a specific person");
-    println!("### delete <id>                                        - remove a person by id");
-    println!("### all <[sortBy1,sortBy2...]> <limit>                 - get all people sorted by defined fields");
-    println!(
-        "### query <sqlQuery>                                   - sql like query on the system"
-    );
+    // println!(
+    //     "### pop <document_type> <number>                                       - populate with random data a specific document_type"
+    // );
+    // println!("### insert <document_type> <field_0> <field_1> .. <field_n>   - add a specific item");
+    // println!("### delete <document_type> <id>                                        - remove an iterm by id");
+    // println!("### all <document_type> <[sortBy1,sortBy2...]> <limit>                 - get all people sorted by defined fields");
+    // println!(
+    //     "### query <sqlQuery>                                   - sql like query on the system"
+    // );
     println!(
         "### cost <document_type_name>                         - get the worst case scenario insertion cost"
     );
@@ -313,7 +325,11 @@ fn prompt_cost(input: String, drive: &Drive, contract: &Contract) {
         match document_type_result {
             Ok(_) => {
                 match drive.worst_case_fee_for_document_type_with_name(contract, doument_type_name) {
-                    Ok((storage_fee, processing_fee)) => { println!("The storage fee is {}, processing fee is {}", storage_fee, processing_fee); }
+                    Ok((storage_fee, processing_fee)) => {
+                        println!("For {} document type:", doument_type_name);
+                        println!("Worst case storage fee: {} ({:.2}¢)", storage_fee, (storage_fee as f64)*10_f64.pow(-9) * DASH_PRICE);
+                        println!("Worst case processing fee: {} ({:.2}¢)", processing_fee, (processing_fee as f64)*10_f64.pow(-9) * DASH_PRICE);
+                    }
                     Err(e) => {
                         println!("### ERROR! Could not get worst case fee from contract");
                     }
@@ -422,12 +438,15 @@ fn prompt_all(input: String, drive: &Drive, contract: &Contract) {
     }
 }
 
-fn person_rl(drive: &Drive, contract: &Contract, rl: &mut Editor<()>) -> bool {
+fn contract_rl(drive: &Drive, contract: &Contract, rl: &mut Editor<()>) -> bool {
     let readline = rl.readline("> ");
     match readline {
         Ok(input) => {
-            if input.starts_with("pop ") {
-                prompt_populate(input, &drive, &contract);
+            if input.starts_with("view ") || input == "v" {
+                print_contract_format(contract);
+                true
+            } else if input.starts_with("pop ") {
+                prompt_populate(input, &drive, contract);
                 true
             } else if input.starts_with("all") {
                 prompt_all(input, &drive, &contract);
@@ -457,7 +476,7 @@ fn person_rl(drive: &Drive, contract: &Contract, rl: &mut Editor<()>) -> bool {
     }
 }
 
-pub fn person_loop(drive: &Drive, contract: &Contract, rl: &mut Editor<()>) -> bool {
-    print_person_contract_options();
-    person_rl(drive, contract, rl)
+pub fn contract_loop(drive: &Drive, contract: &Contract, rl: &mut Editor<()>) -> bool {
+    print_contract_options(&contract);
+    contract_rl(drive, contract, rl)
 }
