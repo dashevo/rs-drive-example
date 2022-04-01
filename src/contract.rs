@@ -18,6 +18,9 @@ use rs_drive::drive::object_size_info::DocumentInfo::DocumentAndSerialization;
 use rustyline::config::Configurer;
 use rustyline::Editor;
 use tempdir::TempDir;
+use ciborium::value::{Integer, Value};
+use rs_drive::contract::types::DocumentFieldType;
+use itertools::Itertools;
 
 pub const DASH_PRICE: f64 = 127.0;
 
@@ -205,20 +208,17 @@ fn print_contract_options(contract: &Contract) {
     println!("### You have the following options for this contract: ###");
     println!("#########################################################");
     println!();
-    println!(
-        "### view / v                                       - view contract structure"
-    );
+    println!("### view / v                                                      - view contract structure");
     // println!(
     //     "### pop <document_type> <number>                                       - populate with random data a specific document_type"
     // );
-    // println!("### insert <document_type> <field_0> <field_1> .. <field_n>   - add a specific item");
+    println!("### insert / i <document_type> <field_0> <field_1> .. <field_n>   - add a specific item");
     // println!("### delete <document_type> <id>                                        - remove an iterm by id");
     // println!("### all <document_type> <[sortBy1,sortBy2...]> <limit>                 - get all people sorted by defined fields");
     // println!(
     //     "### query <sqlQuery>                                   - sql like query on the system"
     // );
-    println!(
-        "### cost <document_type_name>                         - get the worst case scenario insertion cost"
+    println!("### cost <document_type_name>                                     - get the worst case scenario insertion cost"
     );
     println!();
 }
@@ -249,31 +249,66 @@ fn prompt_populate(input: String, drive: &Drive, contract: &Contract) {
 
 fn prompt_insert(input: String, drive: &Drive, contract: &Contract) {
     let args = input.split_whitespace();
-    if args.count() != 5 {
-        println!("### ERROR! Four parameter should be provided");
+    let count = &args.count();
+    if *count < 2 {
+        println!("### ERROR! At least 2 parameters should be provided, got {} for {}", *count, input);
     } else {
         let split: Vec<String> = input.split_whitespace().map(|s| s.to_string()).collect();
-        let first_name = split.get(1).unwrap();
-        let middle_name = split.get(2).unwrap();
-        let last_name = split.get(3).unwrap();
-        let age_string = split.get(4).unwrap();
-        match age_string.parse::<u8>() {
-            Ok(age) => {
-                if age <= 150 {
+        let document_type_name = split.get(1).unwrap();
+        let document_type_result = contract.document_type_for_name(document_type_name);
+        match document_type_result {
+            Ok(document_type) => {
+                let fields_count = &document_type.properties.len();
+                if *count != fields_count + 2 {
+                    println!("### ERROR! Exactly {} parameters should be provided", fields_count + 2);
+                } else {
+                    let mut hashmap: HashMap<String, Value> =  HashMap::new();
+                    for (i, property_name) in (2..=*fields_count).zip(&mut document_type.properties.keys().sorted()) {
+                        let value = split.get(i).unwrap();
+                        let property_type = document_type.properties.get(property_name).unwrap();
+                        let value : Value = property_type.value_from_string(value).expect("expected to get a value");
+                        hashmap.insert(property_name.clone(), value);
+                    }
+                    let mut rng = rand::rngs::StdRng::from_entropy();
+                    let id = Vec::from(rng.gen::<[u8; 32]>());
+                    let owner_id = Vec::from(rng.gen::<[u8; 32]>());
+                    hashmap.insert("$id".to_string(), Value::Bytes(id));
+                    hashmap.insert("$ownerId".to_string(), Value::Bytes(owner_id));
+
+                    let value = serde_json::to_value(&hashmap).expect("serialized item");
+                    let document_cbor =
+                        common::value_to_cbor(value, Some(rs_drive::drive::defaults::PROTOCOL_VERSION));
+                    let document = Document::from_cbor(document_cbor.as_slice(), None, None)
+                        .expect("document should be properly deserialized");
+
                     let start_time = SystemTime::now();
-                    let (storage_fee, processing_fee) = Person::new_with_random_ids(first_name, middle_name, last_name, age)
-                        .add_single(drive, contract);
+                    let db_transaction = drive.grove.start_transaction();
+                    let (storage_fee, processing_fee) = drive
+                        .add_document_for_contract(
+                            DocumentAndContractInfo {
+                                document_info: DocumentAndSerialization((&document, &document_cbor)),
+                                contract,
+                                document_type,
+                                owner_id: None
+                            },
+                            true,
+                            0f64,
+                            Some(&db_transaction),
+                        )
+                        .expect("document should be inserted");
+                    drive.grove.commit_transaction(db_transaction).map_err(|err| {
+                        println!("### ERROR! Unable to commit transaction");
+                        println!("### Info {:?}", err);
+                    });
                     if let Ok(n) = SystemTime::now().duration_since(start_time) {
                         println!("Storage fee: {} ({})", storage_fee, (storage_fee as f64)*10_f64.pow(-11) * DASH_PRICE);
                         println!("Processing fee: {} ({})", processing_fee, (processing_fee as f64)*10_f64.pow(-11) * DASH_PRICE);
                         println!("Time taken: {}", n.as_secs_f64());
                     }
-                } else {
-                    println!("### ERROR! Age must be under 150");
                 }
             }
             Err(_) => {
-                println!("### ERROR! An integer was not provided");
+                println!("### ERROR! Document type does not exist");
             }
         }
     }
@@ -320,13 +355,13 @@ fn prompt_cost(input: String, drive: &Drive, contract: &Contract) {
     if args.count() != 2 {
         println!("### ERROR! Two parameter should be provided");
     } else {
-        let doument_type_name = input.split_whitespace().last().unwrap();
-        let document_type_result = contract.document_type_for_name(doument_type_name);
+        let document_type_name = input.split_whitespace().last().unwrap();
+        let document_type_result = contract.document_type_for_name(document_type_name);
         match document_type_result {
             Ok(_) => {
-                match drive.worst_case_fee_for_document_type_with_name(contract, doument_type_name) {
+                match drive.worst_case_fee_for_document_type_with_name(contract, document_type_name) {
                     Ok((storage_fee, processing_fee)) => {
-                        println!("For {} document type:", doument_type_name);
+                        println!("For {} document type:", document_type_name);
                         println!("Worst case storage fee: {} ({:.2}¢)", storage_fee, (storage_fee as f64)*10_f64.pow(-9) * DASH_PRICE);
                         println!("Worst case processing fee: {} ({:.2}¢)", processing_fee, (processing_fee as f64)*10_f64.pow(-9) * DASH_PRICE);
                     }
@@ -451,7 +486,7 @@ fn contract_rl(drive: &Drive, contract: &Contract, rl: &mut Editor<()>) -> bool 
             } else if input.starts_with("all") {
                 prompt_all(input, &drive, &contract);
                 true
-            } else if input.starts_with("insert ") {
+            } else if input.starts_with("insert ") || input == "i" {
                 prompt_insert(input, &drive, &contract);
                 true
             } else if input.starts_with("delete ") {

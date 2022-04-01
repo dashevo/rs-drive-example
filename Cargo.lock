@@ -973,7 +973,7 @@ dependencies = [
 [[package]]
 name = "rs-drive"
 version = "0.22.0-dev.19"
-source = "git+https://github.com/dashevo/rs-drive?branch=feat/contractFeesTrial#2a7f3518c3d1ecd7c8bc639bd7da7ed75b54fddf"
+source = "git+https://github.com/dashevo/rs-drive?branch=feat/contractFeesTrial#f2df453e5726d67b93995de9cf37d47551209b0c"
 dependencies = [
  "array_tool",
  "base64",
@@ -1000,9 +1000,11 @@ dependencies = [
  "base64",
  "bincode",
  "bs58",
+ "ciborium",
  "grovedb",
  "hex",
  "indexmap",
+ "itertools",
  "rand 0.8.5",
  "rand_distr",
  "rocksdb",
