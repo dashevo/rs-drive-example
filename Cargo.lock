@@ -1127,8 +1127,8 @@ dependencies = [
 
 [[package]]
 name = "rs-drive"
-version = "0.22.0-dev.19"
-source = "git+https://github.com/dashevo/rs-drive?branch=feat/contractFeesTrial#2e7646b547b8e15716baa394af198d45b2307b89"
+version = "0.23.0-dev.2"
+source = "git+https://github.com/dashevo/rs-drive?branch=feat/contractFeesTrial#db1ceca281583d8796f313da0778efaa1d48d609"
 dependencies = [
  "array_tool",
  "base64",

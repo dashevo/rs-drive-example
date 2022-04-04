@@ -30,7 +30,7 @@ pub const DASH_PRICE: f64 = 127.0;
 fn print_contract_format(contract: &Contract) {
     for (document_type_name, document_type) in contract.document_types.iter() {
         println!("## {}", document_type_name);
-        for (property_name) in document_type.properties.keys().sorted() {
+        for property_name in document_type.properties.keys().sorted() {
             let document_field_type = document_type.properties.get(property_name).unwrap();
             println!("#### {} : {}", property_name, document_field_type);
         }
@@ -45,6 +45,8 @@ fn print_contract_options(_contract: &Contract) {
     println!();
     println!("### view / v                                                      - view contract structure");
     println!("### pop <document_type> <number>                                  - populate with random data a specific document_type"
+    );
+    println!("### popfull / pf <document_type> <number>                         - populate with random data using all available size a specific document_type"
     );
     println!(
         "### insert / i <document_type> <field_0> <field_1> .. <field_n>   - add a specific item"
@@ -105,6 +107,50 @@ fn prompt_populate(input: String, drive: &Drive, contract: &Contract) {
                 Ok(value) => {
                     if value > 0 && value <= 10000 {
                         let documents = document_type.random_documents(value, None);
+                        let start_time = SystemTime::now();
+                        let (storage_fee, processing_fee) =
+                            populate_with_documents(documents, drive, document_type, contract)
+                                .expect("populate returned an error");
+                        if let Ok(n) = SystemTime::now().duration_since(start_time) {
+                            println!(
+                                "Storage fee: {} ({:.2}¢)",
+                                storage_fee,
+                                (storage_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+                            );
+                            println!(
+                                "Processing fee: {} ({:.2}¢)",
+                                processing_fee,
+                                (processing_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+                            );
+                            println!("Time taken: {}", n.as_secs_f64());
+                        }
+                    } else {
+                        println!("### ERROR! Value must be between 1 and 10000");
+                    }
+                }
+                Err(_) => {
+                    println!("### ERROR! An integer was not provided for the population");
+                }
+            },
+            Err(_) => {
+                println!("### ERROR! Contract did not have that document type");
+            }
+        }
+    }
+}
+
+fn prompt_populate_full(input: String, drive: &Drive, contract: &Contract) {
+    let args: Vec<&str> = input.split_whitespace().collect();
+    if args.len() != 3 {
+        println!("### ERROR! Two parameter should be provided");
+    } else if let Some(count_str) = args.last() {
+        let document_type_name = args.get(1).unwrap();
+        let document_type = contract.document_type_for_name(document_type_name);
+        match document_type {
+            Ok(document_type) => match count_str.parse::<u32>() {
+                Ok(value) => {
+                    if value > 0 && value <= 10000 {
+                        let documents = document_type.random_filled_documents(value, None);
                         let start_time = SystemTime::now();
                         let (storage_fee, processing_fee) =
                             populate_with_documents(documents, drive, document_type, contract)
@@ -207,7 +253,8 @@ fn prompt_insert(input: String, drive: &Drive, contract: &Contract) {
                         .map_err(|err| {
                             println!("### ERROR! Unable to commit transaction");
                             println!("### Info {:?}", err);
-                        });
+                        })
+                        .expect("expected to commit transaction");
                     if let Ok(n) = SystemTime::now().duration_since(start_time) {
                         println!(
                             "Storage fee: {} ({:.2}¢)",
@@ -504,10 +551,13 @@ fn contract_rl(drive: &Drive, contract: &Contract, rl: &mut Editor<()>) -> bool 
             } else if input.starts_with("pop ") {
                 prompt_populate(input, &drive, contract);
                 true
+            } else if input.starts_with("popfull ") || input.starts_with("pf ") {
+                prompt_populate_full(input, &drive, contract);
+                true
             } else if input.starts_with("all") {
                 prompt_all(input, &drive, &contract);
                 true
-            } else if input.starts_with("insert ") || input == "i" {
+            } else if input.starts_with("insert ") || input.starts_with("i ") {
                 prompt_insert(input, &drive, &contract);
                 true
             } else if input.starts_with("delete ") {

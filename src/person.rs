@@ -125,7 +125,8 @@ impl Person {
             .map_err(|err| {
                 println!("### ERROR! Unable to commit transaction");
                 println!("### Info {:?}", err);
-            });
+            })
+            .expect("expected to commit transaction");
         result
     }
 
