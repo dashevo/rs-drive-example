@@ -173,7 +173,7 @@ pub fn populate(count: u32, drive: &Drive, contract: &Contract) -> Result<(), Er
     for person in people {
         person.add_on_transaction(drive, contract, &db_transaction);
     }
-    drive.grove.commit_transaction(db_transaction);
+    drive.grove.commit_transaction(db_transaction)?;
 
     Ok(())
 }

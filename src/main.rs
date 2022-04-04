@@ -93,7 +93,7 @@ impl Explorer {
             Ok(input) => {
                 if input.eq("person") || input.eq("p") {
                     (true, Some((PersonContract, self.load_person_contract(drive).expect("expected to load person contract"))))
-                } else if input == "l" || input.starts_with("load ") {
+                } else if input.starts_with("l ") || input.starts_with("load ") {
                     match prompt_load_contract(input) {
                         None => (true, None),
                         Some(contract_path) => {
@@ -102,6 +102,7 @@ impl Explorer {
                                     (true, Some((OtherContract, contract)))
                                 }
                                 Err(_) => {
+                                    println!("### ERROR! Issue loading contract");
                                     (true, None)
                                 }
                             }
