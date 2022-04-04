@@ -1,29 +1,29 @@
-use std::collections::HashMap;
-use std::default::Default;
-use grovedb::Error;
-use indexmap::IndexMap;
-use rand::seq::SliceRandom;
-use rand::{Rng, SeedableRng};
-use rocksdb::{OptimisticTransactionDB, Transaction};
-use rs_drive::common;
-use rs_drive::contract::{Contract, Document, DocumentType};
-use rs_drive::drive::Drive;
-use rs_drive::query::{DriveQuery, InternalClauses, OrderClause};
-use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::time::SystemTime;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use ciborium::ser::into_writer;
-use rand_distr::num_traits::Pow;
-use rs_drive::drive::object_size_info::{DocumentAndContractInfo, DocumentInfo};
-use rs_drive::drive::object_size_info::DocumentInfo::DocumentAndSerialization;
-use rustyline::config::Configurer;
-use rustyline::Editor;
-use tempdir::TempDir;
 use ciborium::value::{Integer, Value};
-use rs_drive::contract::types::DocumentFieldType;
+use grovedb::Error;
+use indexmap::IndexMap;
 use itertools::Itertools;
 use prettytable::{Cell, Row, Table};
+use rand::seq::SliceRandom;
+use rand::{Rng, SeedableRng};
+use rand_distr::num_traits::Pow;
+use rocksdb::{OptimisticTransactionDB, Transaction};
+use rs_drive::common;
+use rs_drive::contract::types::DocumentFieldType;
+use rs_drive::contract::{Contract, Document, DocumentType};
+use rs_drive::drive::object_size_info::DocumentInfo::DocumentAndSerialization;
+use rs_drive::drive::object_size_info::{DocumentAndContractInfo, DocumentInfo};
+use rs_drive::drive::Drive;
+use rs_drive::query::{DriveQuery, InternalClauses, OrderClause};
+use rustyline::config::Configurer;
+use rustyline::Editor;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::default::Default;
+use std::io::Write;
+use std::time::SystemTime;
+use tempdir::TempDir;
 
 pub const DASH_PRICE: f64 = 127.0;
 
@@ -37,7 +37,6 @@ fn print_contract_format(contract: &Contract) {
     }
 }
 
-
 fn print_contract_options(_contract: &Contract) {
     println!();
     println!("#########################################################");
@@ -47,8 +46,12 @@ fn print_contract_options(_contract: &Contract) {
     println!("### view / v                                                      - view contract structure");
     println!("### pop <document_type> <number>                                  - populate with random data a specific document_type"
     );
-    println!("### insert / i <document_type> <field_0> <field_1> .. <field_n>   - add a specific item");
-    println!("### delete <document_type> <id>                                   - remove an item by id");
+    println!(
+        "### insert / i <document_type> <field_0> <field_1> .. <field_n>   - add a specific item"
+    );
+    println!(
+        "### delete <document_type> <id>                                   - remove an item by id"
+    );
     println!("### all <document_type> <[sortBy1,sortBy2...]> <limit>            - get all people sorted by defined fields");
     // println!(
     //     "### query <sqlQuery>                                   - sql like query on the system"
@@ -58,19 +61,31 @@ fn print_contract_options(_contract: &Contract) {
     println!();
 }
 
-pub fn populate_with_documents(documents: Vec<Document>, drive: &Drive, document_type: &DocumentType, contract: &Contract) -> Result<(i64, u64), Error> {
+pub fn populate_with_documents(
+    documents: Vec<Document>,
+    drive: &Drive,
+    document_type: &DocumentType,
+    contract: &Contract,
+) -> Result<(i64, u64), Error> {
     let db_transaction = drive.grove.start_transaction();
     let mut storage_fee = 0;
     let mut processing_fee = 0;
     for document in documents.iter() {
-        let document_cbor =
-            document.to_cbor();
-        let (s, p) = drive.add_document_for_contract(DocumentAndContractInfo {
-            document_info: DocumentInfo::DocumentAndSerialization((document, document_cbor.as_slice())),
-            contract,
-            document_type,
-            owner_id: None
-        }, false, 0.0, Some(&db_transaction))?;
+        let document_cbor = document.to_cbor();
+        let (s, p) = drive.add_document_for_contract(
+            DocumentAndContractInfo {
+                document_info: DocumentInfo::DocumentAndSerialization((
+                    document,
+                    document_cbor.as_slice(),
+                )),
+                contract,
+                document_type,
+                owner_id: None,
+            },
+            false,
+            0.0,
+            Some(&db_transaction),
+        )?;
         storage_fee += s;
         processing_fee += p;
     }
@@ -86,27 +101,35 @@ fn prompt_populate(input: String, drive: &Drive, contract: &Contract) {
         let document_type_name = args.get(1).unwrap();
         let document_type = contract.document_type_for_name(document_type_name);
         match document_type {
-            Ok(document_type) => {
-                match count_str.parse::<u32>() {
-                    Ok(value) => {
-                        if value > 0 && value <= 10000 {
-                            let documents = document_type.random_documents(value, None);
-                            let start_time = SystemTime::now();
-                            let (storage_fee, processing_fee) = populate_with_documents(documents, drive, document_type, contract).expect("populate returned an error");
-                            if let Ok(n) = SystemTime::now().duration_since(start_time) {
-                                println!("Storage fee: {} ({:.2}¢)", storage_fee, (storage_fee as f64)*10_f64.pow(-9) * DASH_PRICE);
-                                println!("Processing fee: {} ({:.2}¢)", processing_fee, (processing_fee as f64)*10_f64.pow(-9) * DASH_PRICE);
-                                println!("Time taken: {}", n.as_secs_f64());
-                            }
-                        } else {
-                            println!("### ERROR! Value must be between 1 and 10000");
+            Ok(document_type) => match count_str.parse::<u32>() {
+                Ok(value) => {
+                    if value > 0 && value <= 10000 {
+                        let documents = document_type.random_documents(value, None);
+                        let start_time = SystemTime::now();
+                        let (storage_fee, processing_fee) =
+                            populate_with_documents(documents, drive, document_type, contract)
+                                .expect("populate returned an error");
+                        if let Ok(n) = SystemTime::now().duration_since(start_time) {
+                            println!(
+                                "Storage fee: {} ({:.2}¢)",
+                                storage_fee,
+                                (storage_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+                            );
+                            println!(
+                                "Processing fee: {} ({:.2}¢)",
+                                processing_fee,
+                                (processing_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+                            );
+                            println!("Time taken: {}", n.as_secs_f64());
                         }
-                    }
-                    Err(_) => {
-                        println!("### ERROR! An integer was not provided for the population");
+                    } else {
+                        println!("### ERROR! Value must be between 1 and 10000");
                     }
                 }
-            }
+                Err(_) => {
+                    println!("### ERROR! An integer was not provided for the population");
+                }
+            },
             Err(_) => {
                 println!("### ERROR! Contract did not have that document type");
             }
@@ -118,7 +141,10 @@ fn prompt_insert(input: String, drive: &Drive, contract: &Contract) {
     let args = input.split_whitespace();
     let count = &args.count();
     if *count < 2 {
-        println!("### ERROR! At least 2 parameters should be provided, got {} for {}", *count, input);
+        println!(
+            "### ERROR! At least 2 parameters should be provided, got {} for {}",
+            *count, input
+        );
     } else {
         let split: Vec<String> = input.split_whitespace().map(|s| s.to_string()).collect();
         let document_type_name = split.get(1).unwrap();
@@ -127,13 +153,20 @@ fn prompt_insert(input: String, drive: &Drive, contract: &Contract) {
             Ok(document_type) => {
                 let fields_count = &document_type.properties.len();
                 if *count != fields_count + 2 {
-                    println!("### ERROR! Exactly {} parameters should be provided", fields_count + 2);
+                    println!(
+                        "### ERROR! Exactly {} parameters should be provided",
+                        fields_count + 2
+                    );
                 } else {
-                    let mut hashmap: HashMap<String, Value> =  HashMap::new();
-                    for (i, property_name) in (2..=*fields_count).zip(&mut document_type.properties.keys().sorted()) {
+                    let mut hashmap: HashMap<String, Value> = HashMap::new();
+                    for (i, property_name) in
+                        (2..=*fields_count).zip(&mut document_type.properties.keys().sorted())
+                    {
                         let value = split.get(i).unwrap();
                         let property_type = document_type.properties.get(property_name).unwrap();
-                        let value : Value = property_type.value_from_string(value).expect("expected to get a value");
+                        let value: Value = property_type
+                            .value_from_string(value)
+                            .expect("expected to get a value");
                         hashmap.insert(property_name.clone(), value);
                     }
                     let mut rng = rand::rngs::StdRng::from_entropy();
@@ -143,8 +176,10 @@ fn prompt_insert(input: String, drive: &Drive, contract: &Contract) {
                     hashmap.insert("$ownerId".to_string(), Value::Bytes(owner_id));
 
                     let value = serde_json::to_value(&hashmap).expect("serialized item");
-                    let document_cbor =
-                        common::value_to_cbor(value, Some(rs_drive::drive::defaults::PROTOCOL_VERSION));
+                    let document_cbor = common::value_to_cbor(
+                        value,
+                        Some(rs_drive::drive::defaults::PROTOCOL_VERSION),
+                    );
                     let document = Document::from_cbor(document_cbor.as_slice(), None, None)
                         .expect("document should be properly deserialized");
 
@@ -153,23 +188,37 @@ fn prompt_insert(input: String, drive: &Drive, contract: &Contract) {
                     let (storage_fee, processing_fee) = drive
                         .add_document_for_contract(
                             DocumentAndContractInfo {
-                                document_info: DocumentAndSerialization((&document, &document_cbor)),
+                                document_info: DocumentAndSerialization((
+                                    &document,
+                                    &document_cbor,
+                                )),
                                 contract,
                                 document_type,
-                                owner_id: None
+                                owner_id: None,
                             },
                             true,
                             0f64,
                             Some(&db_transaction),
                         )
                         .expect("document should be inserted");
-                    drive.grove.commit_transaction(db_transaction).map_err(|err| {
-                        println!("### ERROR! Unable to commit transaction");
-                        println!("### Info {:?}", err);
-                    });
+                    drive
+                        .grove
+                        .commit_transaction(db_transaction)
+                        .map_err(|err| {
+                            println!("### ERROR! Unable to commit transaction");
+                            println!("### Info {:?}", err);
+                        });
                     if let Ok(n) = SystemTime::now().duration_since(start_time) {
-                        println!("Storage fee: {} ({:.2}¢)", storage_fee, (storage_fee as f64)*10_f64.pow(-9) * DASH_PRICE);
-                        println!("Processing fee: {} ({:.2}¢)", processing_fee, (processing_fee as f64)*10_f64.pow(-9) * DASH_PRICE);
+                        println!(
+                            "Storage fee: {} ({:.2}¢)",
+                            storage_fee,
+                            (storage_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+                        );
+                        println!(
+                            "Processing fee: {} ({:.2}¢)",
+                            processing_fee,
+                            (processing_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+                        );
                         println!("Time taken: {}", n.as_secs_f64());
                     }
                 }
@@ -194,7 +243,10 @@ fn prompt_delete(input: String, drive: &Drive, contract: &Contract) {
             println!("### ERROR! Could not decode id");
         }
         let id = id.unwrap();
-        if drive.delete_document_for_contract(id.as_slice(), contract, document_type_name, None, None).is_err() {
+        if drive
+            .delete_document_for_contract(id.as_slice(), contract, document_type_name, None, None)
+            .is_err()
+        {
             println!("### ERROR! Could not delete document");
         }
     }
@@ -227,11 +279,20 @@ fn prompt_cost(input: String, drive: &Drive, contract: &Contract) {
         let document_type_result = contract.document_type_for_name(document_type_name);
         match document_type_result {
             Ok(_) => {
-                match drive.worst_case_fee_for_document_type_with_name(contract, document_type_name) {
+                match drive.worst_case_fee_for_document_type_with_name(contract, document_type_name)
+                {
                     Ok((storage_fee, processing_fee)) => {
                         println!("For {} document type:", document_type_name);
-                        println!("Worst case storage fee: {} ({:.2}¢)", storage_fee, (storage_fee as f64)*10_f64.pow(-9) * DASH_PRICE);
-                        println!("Worst case processing fee: {} ({:.2}¢)", processing_fee, (processing_fee as f64)*10_f64.pow(-9) * DASH_PRICE);
+                        println!(
+                            "Worst case storage fee: {} ({:.2}¢)",
+                            storage_fee,
+                            (storage_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+                        );
+                        println!(
+                            "Worst case processing fee: {} ({:.2}¢)",
+                            processing_fee,
+                            (processing_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+                        );
                     }
                     Err(e) => {
                         println!("### ERROR! Could not get worst case fee from contract");
@@ -245,7 +306,7 @@ fn prompt_cost(input: String, drive: &Drive, contract: &Contract) {
     }
 }
 
-fn reduced_value_string_representation(value: &Value, field_type : &DocumentFieldType) -> String {
+fn reduced_value_string_representation(value: &Value, field_type: &DocumentFieldType) -> String {
     match value {
         Value::Integer(integer) => {
             let i: i128 = integer.clone().try_into().unwrap();
@@ -277,8 +338,10 @@ fn reduced_value_string_representation(value: &Value, field_type : &DocumentFiel
                             format!("{}", newdate)
                         }
                     }
-}
-                _ => { format!("{}", float) }
+                }
+                _ => {
+                    format!("{}", float)
+                }
             }
         }
         Value::Text(text) => {
@@ -302,7 +365,7 @@ fn reduced_value_string_representation(value: &Value, field_type : &DocumentFiel
 }
 
 fn table_for_document_type(document_type: &DocumentType) -> Table {
-    let mut cells : Vec<Cell> = vec![Cell::new("$id"), Cell::new("$owner")];
+    let mut cells: Vec<Cell> = vec![Cell::new("$id"), Cell::new("$owner")];
     for (key, field_type) in document_type.properties.iter() {
         cells.push(Cell::new(key.as_str()));
     }
@@ -312,7 +375,13 @@ fn table_for_document_type(document_type: &DocumentType) -> Table {
     table
 }
 
-fn all(order_by_strings: Vec<String>, limit: u16, drive: &Drive, contract: &Contract, document_type_name: &str) {
+fn all(
+    order_by_strings: Vec<String>,
+    limit: u16,
+    drive: &Drive,
+    contract: &Contract,
+    document_type_name: &str,
+) {
     let order_by: IndexMap<String, OrderClause> = order_by_strings
         .iter()
         .map(|field| {
@@ -338,7 +407,7 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &Drive, contract: &Cont
         order_by,
         start_at: None,
         start_at_included: false,
-        block_time: None
+        block_time: None,
     };
     let (results, _) = query
         .execute_no_proof(&drive.grove, None)
@@ -347,17 +416,25 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &Drive, contract: &Cont
     let documents: Vec<Document> = results
         .into_iter()
         .map(|result| {
-           Document::from_cbor(result.as_slice(), None, None)
+            Document::from_cbor(result.as_slice(), None, None)
                 .expect("we should be able to deserialize the cbor")
-
         })
         .collect();
     let mut table = table_for_document_type(document_type);
     for document in documents.iter() {
-        let mut cells : Vec<Cell> = vec![Cell::new(bs58::encode(document.id.as_slice()).into_string().as_str()), Cell::new(bs58::encode(document.owner_id.as_slice()).into_string().as_str())];
+        let mut cells: Vec<Cell> = vec![
+            Cell::new(bs58::encode(document.id.as_slice()).into_string().as_str()),
+            Cell::new(
+                bs58::encode(document.owner_id.as_slice())
+                    .into_string()
+                    .as_str(),
+            ),
+        ];
         for (key, value) in document.properties.iter() {
             let document_field_type = document_type.properties.get(key).unwrap();
-            cells.push(Cell::new(reduced_value_string_representation(value, document_field_type).as_str()));
+            cells.push(Cell::new(
+                reduced_value_string_representation(value, document_field_type).as_str(),
+            ));
         }
         table.add_row(Row::new(cells));
     }
@@ -447,11 +524,11 @@ fn contract_rl(drive: &Drive, contract: &Contract, rl: &mut Editor<()>) -> bool 
             } else {
                 true
             }
-        },
+        }
         Err(_) => {
             println!("no input, try again");
             true
-        },
+        }
     }
 }
 

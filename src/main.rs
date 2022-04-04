@@ -1,10 +1,9 @@
-pub mod person;
 mod contract;
+pub mod person;
 
-use std::collections::HashMap;
-use std::default::Default;
-use std::fs;
-use std::path::Path;
+use crate::contract::contract_loop;
+use crate::person::person_loop;
+use crate::ContractType::{OtherContract, PersonContract};
 use grovedb::Error;
 use rand::{Rng, SeedableRng};
 use rocksdb::{OptimisticTransactionDB, Transaction};
@@ -14,15 +13,16 @@ use rs_drive::drive::Drive;
 use rs_drive::query::{DriveQuery, InternalClauses, OrderClause};
 use rustyline::config::Configurer;
 use rustyline::Editor;
+use std::collections::HashMap;
+use std::default::Default;
+use std::fs;
+use std::path::Path;
 use tempdir::TempDir;
-use crate::contract::contract_loop;
-use crate::ContractType::{OtherContract, PersonContract};
-use crate::person::person_loop;
 
 pub const LAST_CONTRACT_PATH: &str = "last_contract_path";
 
 struct Explorer {
-    config: HashMap<String, String>
+    config: HashMap<String, String>,
 }
 
 impl Explorer {
@@ -31,20 +31,15 @@ impl Explorer {
 
         let read_result = fs::read(path);
         let config = match read_result {
-            Ok(data) => {
-                bincode::deserialize(&data).expect("config file is corrupted")
-            }
-            Err(_) => {
-                HashMap::new()
-            }
+            Ok(data) => bincode::deserialize(&data).expect("config file is corrupted"),
+            Err(_) => HashMap::new(),
         };
-        Explorer {
-            config
-        }
+        Explorer { config }
     }
 
     fn save_config(&self) {
-        let config = bincode::serialize(&self.config).expect("unable to serialize root leaves data");
+        let config =
+            bincode::serialize(&self.config).expect("unable to serialize root leaves data");
         let path = Path::new("explorer.config");
 
         fs::write(path, config).unwrap();
@@ -78,29 +73,42 @@ impl Explorer {
             Some(&db_transaction),
         );
         drive.grove.commit_transaction(db_transaction)?;
-        self.config.insert(LAST_CONTRACT_PATH.to_string(), contract_path.to_string());
+        self.config
+            .insert(LAST_CONTRACT_PATH.to_string(), contract_path.to_string());
         self.save_config();
         Ok(contract)
     }
 
     fn load_person_contract(&mut self, drive: &Drive) -> Result<Contract, Error> {
-        self.load_contract(drive, "src/supporting_files/contract/family/family-contract.json")
+        self.load_contract(
+            drive,
+            "src/supporting_files/contract/family/family-contract.json",
+        )
     }
 
-    fn base_rl(&mut self, drive: &Drive, rl: &mut Editor<()>) -> (bool, Option<(ContractType, Contract)>) {
+    fn base_rl(
+        &mut self,
+        drive: &Drive,
+        rl: &mut Editor<()>,
+    ) -> (bool, Option<(ContractType, Contract)>) {
         let readline = rl.readline("> ");
         match readline {
             Ok(input) => {
                 if input.eq("person") || input.eq("p") {
-                    (true, Some((PersonContract, self.load_person_contract(drive).expect("expected to load person contract"))))
+                    (
+                        true,
+                        Some((
+                            PersonContract,
+                            self.load_person_contract(drive)
+                                .expect("expected to load person contract"),
+                        )),
+                    )
                 } else if input.starts_with("l ") || input.starts_with("load ") {
                     match prompt_load_contract(input) {
                         None => (true, None),
                         Some(contract_path) => {
                             match self.load_contract(drive, contract_path.as_str()) {
-                                Ok(contract) => {
-                                    (true, Some((OtherContract, contract)))
-                                }
+                                Ok(contract) => (true, Some((OtherContract, contract))),
                                 Err(_) => {
                                     println!("### ERROR! Issue loading contract");
                                     (true, None)
@@ -110,27 +118,27 @@ impl Explorer {
                     }
                 } else if input == "ll" || input == "loadlast" {
                     match self.load_last_contract(drive) {
-                        Some(contract) => {
-                            (true, Some((OtherContract, contract)))
-                        }
-                        None => {
-                            (true, None)
-                        }
+                        Some(contract) => (true, Some((OtherContract, contract))),
+                        None => (true, None),
                     }
                 } else if input == "exit" {
                     (false, None)
                 } else {
                     (true, None)
                 }
-            },
+            }
             Err(_) => {
                 println!("no input, try again");
                 (true, None)
-            },
+            }
         }
     }
 
-    fn base_loop(&mut self, drive: &Drive, rl: &mut Editor<()>) -> (bool, Option<(ContractType, Contract)>) {
+    fn base_loop(
+        &mut self,
+        drive: &Drive,
+        rl: &mut Editor<()>,
+    ) -> (bool, Option<(ContractType, Contract)>) {
         print_base_options();
         self.base_rl(drive, rl)
     }
@@ -186,7 +194,7 @@ fn main() {
     let mut rl = rustyline::Editor::<()>::new();
     rl.set_auto_add_history(true);
 
-    let mut current_contract : Option<(ContractType, Contract)> = None;
+    let mut current_contract: Option<(ContractType, Contract)> = None;
 
     let mut explorer = Explorer::load_config();
 
@@ -194,20 +202,18 @@ fn main() {
         if current_contract.is_some() {
             match &current_contract {
                 None => {}
-                Some((contract_type, contract)) => {
-                    match contract_type {
-                        ContractType::PersonContract => {
-                            if !person_loop(&drive, contract, &mut rl) {
-                                current_contract = None;
-                            }
-                        }
-                        ContractType::OtherContract => {
-                            if !contract_loop(&drive, contract, &mut rl) {
-                                current_contract = None;
-                            }
+                Some((contract_type, contract)) => match contract_type {
+                    ContractType::PersonContract => {
+                        if !person_loop(&drive, contract, &mut rl) {
+                            current_contract = None;
                         }
                     }
-                }
+                    ContractType::OtherContract => {
+                        if !contract_loop(&drive, contract, &mut rl) {
+                            current_contract = None;
+                        }
+                    }
+                },
             }
         } else {
             let base_result = explorer.base_loop(&drive, &mut rl);
@@ -215,7 +221,7 @@ fn main() {
                 true => {
                     current_contract = base_result.1;
                 }
-                false => { break }
+                false => break,
             }
         }
     }

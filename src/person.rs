@@ -1,22 +1,22 @@
-use std::collections::HashMap;
-use std::default::Default;
 use grovedb::Error;
 use indexmap::IndexMap;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
+use rand_distr::num_traits::Pow;
 use rocksdb::{OptimisticTransactionDB, Transaction};
 use rs_drive::common;
 use rs_drive::contract::{Contract, Document, DocumentType};
+use rs_drive::drive::object_size_info::DocumentInfo::DocumentAndSerialization;
+use rs_drive::drive::object_size_info::{DocumentAndContractInfo, DocumentInfo};
 use rs_drive::drive::Drive;
 use rs_drive::query::{DriveQuery, InternalClauses, OrderClause};
-use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::time::SystemTime;
-use rand_distr::num_traits::Pow;
-use rs_drive::drive::object_size_info::{DocumentAndContractInfo, DocumentInfo};
-use rs_drive::drive::object_size_info::DocumentInfo::DocumentAndSerialization;
 use rustyline::config::Configurer;
 use rustyline::Editor;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::default::Default;
+use std::io::Write;
+use std::time::SystemTime;
 use tempdir::TempDir;
 
 pub const DASH_PRICE: f64 = 127.0;
@@ -119,10 +119,13 @@ impl Person {
     fn add_single(&self, drive: &Drive, contract: &Contract) -> (i64, u64) {
         let db_transaction = drive.grove.start_transaction();
         let result = self.add_on_transaction(drive, contract, &db_transaction);
-        drive.grove.commit_transaction(db_transaction).map_err(|err| {
-            println!("### ERROR! Unable to commit transaction");
-            println!("### Info {:?}", err);
-        });
+        drive
+            .grove
+            .commit_transaction(db_transaction)
+            .map_err(|err| {
+                println!("### ERROR! Unable to commit transaction");
+                println!("### Info {:?}", err);
+            });
         result
     }
 
@@ -138,14 +141,16 @@ impl Person {
         let document = Document::from_cbor(document_cbor.as_slice(), None, None)
             .expect("document should be properly deserialized");
 
-        let document_type = contract.document_type_for_name("person").expect("expected to get person contract");
+        let document_type = contract
+            .document_type_for_name("person")
+            .expect("expected to get person contract");
         drive
             .add_document_for_contract(
                 DocumentAndContractInfo {
                     document_info: DocumentAndSerialization((&document, &document_cbor)),
                     contract,
                     document_type,
-                    owner_id: None
+                    owner_id: None,
                 },
                 true,
                 0f64,
@@ -188,7 +193,6 @@ fn prompt(name: &str) -> String {
 
     return line.trim().to_string();
 }
-
 
 fn print_person_contract_options() {
     println!();
@@ -249,11 +253,20 @@ fn prompt_insert(input: String, drive: &Drive, contract: &Contract) {
             Ok(age) => {
                 if age <= 150 {
                     let start_time = SystemTime::now();
-                    let (storage_fee, processing_fee) = Person::new_with_random_ids(first_name, middle_name, last_name, age)
-                        .add_single(drive, contract);
+                    let (storage_fee, processing_fee) =
+                        Person::new_with_random_ids(first_name, middle_name, last_name, age)
+                            .add_single(drive, contract);
                     if let Ok(n) = SystemTime::now().duration_since(start_time) {
-                        println!("Storage fee: {} ({})", storage_fee, (storage_fee as f64)*10_f64.pow(-11) * DASH_PRICE);
-                        println!("Processing fee: {} ({})", processing_fee, (processing_fee as f64)*10_f64.pow(-11) * DASH_PRICE);
+                        println!(
+                            "Storage fee: {} ({})",
+                            storage_fee,
+                            (storage_fee as f64) * 10_f64.pow(-11) * DASH_PRICE
+                        );
+                        println!(
+                            "Processing fee: {} ({})",
+                            processing_fee,
+                            (processing_fee as f64) * 10_f64.pow(-11) * DASH_PRICE
+                        );
                         println!("Time taken: {}", n.as_secs_f64());
                     }
                 } else {
@@ -279,7 +292,10 @@ fn prompt_delete(input: String, drive: &Drive, contract: &Contract) {
             println!("### ERROR! Could not decode id");
         }
         let id = id.unwrap();
-        if drive.delete_document_for_contract(id.as_slice(), contract, "person", None, None).is_err() {
+        if drive
+            .delete_document_for_contract(id.as_slice(), contract, "person", None, None)
+            .is_err()
+        {
             println!("### ERROR! Could not delete document");
         }
     }
@@ -312,8 +328,14 @@ fn prompt_cost(input: String, drive: &Drive, contract: &Contract) {
         let document_type_result = contract.document_type_for_name(doument_type_name);
         match document_type_result {
             Ok(_) => {
-                match drive.worst_case_fee_for_document_type_with_name(contract, doument_type_name) {
-                    Ok((storage_fee, processing_fee)) => { println!("The storage fee is {}, processing fee is {}", storage_fee, processing_fee); }
+                match drive.worst_case_fee_for_document_type_with_name(contract, doument_type_name)
+                {
+                    Ok((storage_fee, processing_fee)) => {
+                        println!(
+                            "The storage fee is {}, processing fee is {}",
+                            storage_fee, processing_fee
+                        );
+                    }
                     Err(e) => {
                         println!("### ERROR! Could not get worst case fee from contract");
                     }
@@ -354,7 +376,7 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &Drive, contract: &Cont
         order_by,
         start_at: None,
         start_at_included: false,
-        block_time: None
+        block_time: None,
     };
     let (results, _) = query
         .execute_no_proof(&drive.grove, None)
@@ -449,11 +471,11 @@ fn person_rl(drive: &Drive, contract: &Contract, rl: &mut Editor<()>) -> bool {
             } else {
                 true
             }
-        },
+        }
         Err(_) => {
             println!("no input, try again");
             true
-        },
+        }
     }
 }
 
