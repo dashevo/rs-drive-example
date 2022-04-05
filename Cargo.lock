@@ -1128,7 +1128,7 @@ dependencies = [
 [[package]]
 name = "rs-drive"
 version = "0.23.0-dev.2"
-source = "git+https://github.com/dashevo/rs-drive?branch=feat/contractFeesTrial#db1ceca281583d8796f313da0778efaa1d48d609"
+source = "git+https://github.com/dashevo/rs-drive?branch=feat/contractFeesTrial#4ebfe8cb67e73ade701e6e8b0d4c0e6eca1f5932"
 dependencies = [
  "array_tool",
  "base64",
@@ -1209,9 +1209,9 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustix"
-version = "0.34.1"
+version = "0.34.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd3cc851a13d30a34cb747ba2a0c5101a4b2e8b1677a29b213ee465365ea495e"
+checksum = "96619609a54d638872db136f56941d34e2a00bb0acf3fa783a90d6b96a093ba2"
 dependencies = [
  "bitflags",
  "errno",

@@ -34,6 +34,17 @@ fn print_contract_format(contract: &Contract) {
             let document_field_type = document_type.properties.get(property_name).unwrap();
             println!("#### {} : {}", property_name, document_field_type);
         }
+        for index in document_type.indices.iter() {
+            let index_strings: Vec<&str> = index.properties.iter().map(|index_property| {
+                index_property.name.as_str()
+            }).collect();
+            let unique = if index.unique {
+                " : unique"
+            } else {
+                ""
+            };
+            println!("#### i: {}{}", index_strings.join("/"), unique);
+        }
     }
 }
 
@@ -55,9 +66,9 @@ fn print_contract_options(_contract: &Contract) {
         "### delete <document_type> <id>                                   - remove an item by id"
     );
     println!("### all <document_type> <[sortBy1,sortBy2...]> <limit>            - get all people sorted by defined fields");
-    // println!(
-    //     "### query <sqlQuery>                                   - sql like query on the system"
-    // );
+    println!(
+        "### select <sqlQuery>                                             - sql like query on the system"
+    );
     println!("### cost <document_type_name>                                     - get the worst case scenario insertion cost"
     );
     println!();
@@ -298,24 +309,23 @@ fn prompt_delete(input: String, drive: &Drive, contract: &Contract) {
         }
     }
 }
-//
-// fn prompt_query(input: String, drive: &Drive, contract: &Contract) {
-//     let query = DriveQuery::from_sql_expr(input.as_str(), &contract).expect("should build query");
-//     let results = query.execute_no_proof(&drive.grove, None);
-//     if let Ok((results, _)) = results {
-//         let people: Vec<Person> = results
-//             .into_iter()
-//             .map(|result| {
-//                 let document = Document::from_cbor(result.as_slice(), None, None)
-//                     .expect("we should be able to deserialize the cbor");
-//                 Person::from_document(document)
-//             })
-//             .collect();
-//         people.iter().for_each(|person| person.println());
-//     } else {
-//         println!("invalid query, try again");
-//     }
-// }
+
+fn prompt_query(input: String, drive: &Drive, contract: &Contract) {
+    let query = DriveQuery::from_sql_expr(input.as_str(), &contract).expect("should build query");
+    let results = query.execute_no_proof(&drive.grove, None);
+    if let Ok((results, _)) = results {
+        let documents: Vec<Document> = results
+            .into_iter()
+            .map(|result| {
+                Document::from_cbor(result.as_slice(), None, None)
+                    .expect("we should be able to deserialize the cbor")
+            })
+            .collect();
+        print_results(&query.document_type, documents);
+    } else {
+        println!("invalid query, try again");
+    }
+}
 
 fn prompt_cost(input: String, drive: &Drive, contract: &Contract) {
     let args = input.split_whitespace();
@@ -422,6 +432,29 @@ fn table_for_document_type(document_type: &DocumentType) -> Table {
     table
 }
 
+fn print_results(document_type: &DocumentType, documents: Vec<Document>) {
+    let mut table = table_for_document_type(document_type);
+    for document in documents.iter() {
+        let mut cells: Vec<Cell> = vec![
+            Cell::new(bs58::encode(document.id.as_slice()).into_string().as_str()),
+            Cell::new(
+                bs58::encode(document.owner_id.as_slice())
+                    .into_string()
+                    .as_str(),
+            ),
+        ];
+        for (key, value) in document.properties.iter() {
+            let document_field_type = document_type.properties.get(key).unwrap();
+            cells.push(Cell::new(
+                reduced_value_string_representation(value, document_field_type).as_str(),
+            ));
+        }
+        table.add_row(Row::new(cells));
+    }
+
+    table.printstd();
+}
+
 fn all(
     order_by_strings: Vec<String>,
     limit: u16,
@@ -467,26 +500,7 @@ fn all(
                 .expect("we should be able to deserialize the cbor")
         })
         .collect();
-    let mut table = table_for_document_type(document_type);
-    for document in documents.iter() {
-        let mut cells: Vec<Cell> = vec![
-            Cell::new(bs58::encode(document.id.as_slice()).into_string().as_str()),
-            Cell::new(
-                bs58::encode(document.owner_id.as_slice())
-                    .into_string()
-                    .as_str(),
-            ),
-        ];
-        for (key, value) in document.properties.iter() {
-            let document_field_type = document_type.properties.get(key).unwrap();
-            cells.push(Cell::new(
-                reduced_value_string_representation(value, document_field_type).as_str(),
-            ));
-        }
-        table.add_row(Row::new(cells));
-    }
-
-    table.printstd();
+    print_results(&document_type, documents);
 }
 
 fn prompt_all(input: String, drive: &Drive, contract: &Contract) {
@@ -564,7 +578,7 @@ fn contract_rl(drive: &Drive, contract: &Contract, rl: &mut Editor<()>) -> bool 
                 prompt_delete(input, &drive, &contract);
                 true
             } else if input.starts_with("select ") {
-                //prompt_query(input, &drive, &contract);
+                prompt_query(input, &drive, &contract);
                 true
             } else if input.starts_with("cost ") {
                 prompt_cost(input, &drive, &contract);
