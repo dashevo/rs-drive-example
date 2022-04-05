@@ -35,14 +35,12 @@ fn print_contract_format(contract: &Contract) {
             println!("#### {} : {}", property_name, document_field_type);
         }
         for index in document_type.indices.iter() {
-            let index_strings: Vec<&str> = index.properties.iter().map(|index_property| {
-                index_property.name.as_str()
-            }).collect();
-            let unique = if index.unique {
-                " : unique"
-            } else {
-                ""
-            };
+            let index_strings: Vec<&str> = index
+                .properties
+                .iter()
+                .map(|index_property| index_property.name.as_str())
+                .collect();
+            let unique = if index.unique { " : unique" } else { "" };
             println!("#### i: {}{}", index_strings.join("/"), unique);
         }
     }
