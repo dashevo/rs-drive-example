@@ -3,7 +3,7 @@ pub mod person;
 
 use crate::contract::contract_loop;
 use crate::person::person_loop;
-use crate::ContractType::{OtherContract, PersonContract};
+use crate::ContractType::{DPNSContract, DashPayContract, OtherContract, PersonContract};
 use grovedb::Error;
 use rand::{Rng, SeedableRng};
 use rocksdb::{OptimisticTransactionDB, Transaction};
@@ -86,6 +86,14 @@ impl Explorer {
         )
     }
 
+    fn load_dashpay_contract(&mut self, drive: &Drive) -> Result<Contract, Error> {
+        self.load_contract(drive, "src/supporting_files/contract/dashpay-contract.json")
+    }
+
+    fn load_dpns_contract(&mut self, drive: &Drive) -> Result<Contract, Error> {
+        self.load_contract(drive, "src/supporting_files/contract/dpns-contract.json")
+    }
+
     fn base_rl(
         &mut self,
         drive: &Drive,
@@ -100,6 +108,24 @@ impl Explorer {
                         Some((
                             PersonContract,
                             self.load_person_contract(drive)
+                                .expect("expected to load person contract"),
+                        )),
+                    )
+                } else if input.eq("dashpay") || input.eq("dp") {
+                    (
+                        true,
+                        Some((
+                            DashPayContract,
+                            self.load_dashpay_contract(drive)
+                                .expect("expected to load person contract"),
+                        )),
+                    )
+                } else if input.eq("dpns") {
+                    (
+                        true,
+                        Some((
+                            DPNSContract,
+                            self.load_dpns_contract(drive)
                                 .expect("expected to load person contract"),
                         )),
                     )
@@ -146,6 +172,8 @@ impl Explorer {
 
 enum ContractType {
     PersonContract,
+    DashPayContract,
+    DPNSContract,
     OtherContract,
 }
 
@@ -168,6 +196,8 @@ fn print_base_options() {
     println!("########################################");
     println!();
     println!("### person / p                      - load the person contract");
+    println!("### dashpay                         - load the dashpay contract");
+    println!("### dpns                            - load the dpns contract");
     println!("### load / l <contract file path>   - load a specific contract");
     println!("### loadlast / ll                   - load the last loaded contract");
     println!();
@@ -208,7 +238,7 @@ fn main() {
                             current_contract = None;
                         }
                     }
-                    ContractType::OtherContract => {
+                    _ => {
                         if !contract_loop(&drive, contract, &mut rl) {
                             current_contract = None;
                         }

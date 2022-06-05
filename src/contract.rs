@@ -1,9 +1,9 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use ciborium::ser::into_writer;
-use ciborium::value::{Integer, Value};
-use grovedb::Error;
+use ciborium::value::{Integer as cborInteger, Value};
 use indexmap::IndexMap;
 use itertools::Itertools;
+use num_integer::Integer;
 use prettytable::{Cell, Row, Table};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
@@ -15,17 +15,19 @@ use rs_drive::contract::{Contract, Document, DocumentType};
 use rs_drive::drive::object_size_info::DocumentInfo::DocumentAndSerialization;
 use rs_drive::drive::object_size_info::{DocumentAndContractInfo, DocumentInfo};
 use rs_drive::drive::Drive;
-use rs_drive::query::{DriveQuery, InternalClauses, OrderClause};
+use rs_drive::error::Error;
+use rs_drive::query::{DriveQuery, InternalClauses, OrderClause, WhereClause, WhereOperator};
 use rustyline::config::Configurer;
 use rustyline::Editor;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::default::Default;
 use std::io::Write;
 use std::time::SystemTime;
 use tempdir::TempDir;
 
-pub const DASH_PRICE: f64 = 127.0;
+pub const DASH_PRICE: f64 = 55.0;
+pub const BYTE_DUFF_COST: f64 = 50.0;
 
 fn print_contract_format(contract: &Contract) {
     for (document_type_name, document_type) in contract.document_types.iter() {
@@ -56,6 +58,8 @@ fn print_contract_options(_contract: &Contract) {
     println!("### pop <document_type> <number>                                  - populate with random data a specific document_type"
     );
     println!("### popfull / pf <document_type> <number>                         - populate with random data using all available size a specific document_type"
+    );
+    println!("### benchpop / bp <document_type> <number> <step>                 - populate with random data a specific document_type benchmarking over time"
     );
     println!(
         "### insert / i <document_type> <field_0> <field_1> .. <field_n>   - add a specific item"
@@ -95,6 +99,7 @@ pub fn populate_with_documents(
             },
             false,
             0.0,
+            true,
             Some(&db_transaction),
         )?;
         storage_fee += s;
@@ -104,10 +109,126 @@ pub fn populate_with_documents(
     Ok((storage_fee, processing_fee))
 }
 
+fn queries_for_document_type<'a>(
+    contract: &'a Contract,
+    document_type: &'a DocumentType,
+) -> Vec<DriveQuery<'a>> {
+    let mut drive_queries = vec![];
+    let mut rng = rand::rngs::StdRng::from_entropy();
+    for index in document_type.indices.iter() {
+        if let Some(first_property) = index.properties.first() {
+            let order_clause = OrderClause {
+                field: first_property.name.clone(),
+                ascending: true,
+            };
+            let mut order_by = IndexMap::new();
+            order_by.insert(first_property.name.clone(), order_clause);
+            let property = document_type
+                .document_field_type_for_property(first_property.name.as_str())
+                .expect("expected to get value");
+            let range_clause = WhereClause {
+                field: first_property.name.clone(),
+                operator: WhereOperator::GreaterThan,
+                value: property.random_value(&mut rng),
+            };
+            let internal_clauses = InternalClauses {
+                primary_key_in_clause: None,
+                primary_key_equal_clause: None,
+                in_clause: None,
+                range_clause: Some(range_clause),
+                equal_clauses: BTreeMap::new(),
+            };
+            let query = DriveQuery {
+                contract,
+                document_type,
+                internal_clauses,
+                offset: 0,
+                limit: 100,
+                order_by,
+                start_at: None,
+                start_at_included: false,
+                block_time: None,
+            };
+            drive_queries.push(query);
+        }
+    }
+    drive_queries
+}
+
+fn execute_random_queries_for_document_type(
+    drive: &Drive,
+    contract: &Contract,
+    document_type: &DocumentType,
+) -> (usize, u64, f64) {
+    let queries = queries_for_document_type(contract, document_type);
+    let start_time = SystemTime::now();
+    let mut total_count: u64 = 0;
+    let queries_len = queries.len();
+    for query in queries.iter() {
+        let (values, _, _) = query
+            .execute_no_proof(drive, None)
+            .expect("expected to execute query");
+        total_count += values.len() as u64;
+    }
+    if let Ok(n) = SystemTime::now().duration_since(start_time) {
+        (queries_len, total_count, n.as_secs_f64())
+    } else {
+        (queries_len, total_count, 0f64)
+    }
+}
+
+fn populate_many(
+    count: u32,
+    drive: &Drive,
+    contract: &Contract,
+    document_type: &DocumentType,
+    i: Option<u32>,
+    export_csv: bool,
+) {
+    let documents = document_type.random_documents(count, None);
+    let start_time = SystemTime::now();
+    let (storage_fee, processing_fee) =
+        populate_with_documents(documents, drive, document_type, contract)
+            .expect("populate returned an error");
+    let mut insertion_time = 0f64;
+    if let Ok(n) = SystemTime::now().duration_since(start_time) {
+        insertion_time = n.as_secs_f64();
+        if export_csv == false {
+            if let Some(i) = i {
+                println!("Step {}", i);
+            }
+            println!(
+                "Storage fee: {} ({:.2}¢)",
+                storage_fee,
+                (storage_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+            );
+            println!(
+                "Processing fee: {} ({:.2}¢)",
+                processing_fee,
+                (processing_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+            );
+            println!("Time taken: {}", n.as_secs_f64());
+        }
+    }
+    let (queries_len, total_count, query_time) =
+        execute_random_queries_for_document_type(drive, contract, document_type);
+    if export_csv == false {
+        println!(
+            "{} {} returned {} values in: {}",
+            queries_len,
+            if queries_len > 1 { "queries" } else { "query" },
+            total_count,
+            query_time
+        );
+    } else {
+        println!("{};{}", insertion_time, query_time);
+    }
+}
+
 fn prompt_populate(input: String, drive: &Drive, contract: &Contract) {
     let args: Vec<&str> = input.split_whitespace().collect();
     if args.len() != 3 {
-        println!("### ERROR! Two parameter should be provided");
+        println!("### ERROR! Two parameters should be provided");
     } else if let Some(count_str) = args.last() {
         let document_type_name = args.get(1).unwrap();
         let document_type = contract.document_type_for_name(document_type_name);
@@ -115,26 +236,63 @@ fn prompt_populate(input: String, drive: &Drive, contract: &Contract) {
             Ok(document_type) => match count_str.parse::<u32>() {
                 Ok(value) => {
                     if value > 0 && value <= 10000 {
-                        let documents = document_type.random_documents(value, None);
-                        let start_time = SystemTime::now();
-                        let (storage_fee, processing_fee) =
-                            populate_with_documents(documents, drive, document_type, contract)
-                                .expect("populate returned an error");
-                        if let Ok(n) = SystemTime::now().duration_since(start_time) {
-                            println!(
-                                "Storage fee: {} ({:.2}¢)",
-                                storage_fee,
-                                (storage_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
-                            );
-                            println!(
-                                "Processing fee: {} ({:.2}¢)",
-                                processing_fee,
-                                (processing_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
-                            );
-                            println!("Time taken: {}", n.as_secs_f64());
-                        }
+                        populate_many(value, drive, contract, document_type, None, false);
                     } else {
                         println!("### ERROR! Value must be between 1 and 10000");
+                    }
+                }
+                Err(_) => {
+                    println!("### ERROR! An integer was not provided for the population");
+                }
+            },
+            Err(_) => {
+                println!("### ERROR! Contract did not have that document type");
+            }
+        }
+    }
+}
+
+fn prompt_bench(input: String, drive: &Drive, contract: &Contract) {
+    let args: Vec<&str> = input.split_whitespace().collect();
+    if args.len() != 3 && args.len() != 4 && args.len() != 5 {
+        println!("### ERROR! Between two and four parameters should be provided");
+    } else if let Some(count_str) = args.get(2) {
+        let document_type_name = args.get(1).unwrap();
+        let document_type = contract.document_type_for_name(document_type_name);
+        match document_type {
+            Ok(document_type) => match count_str.parse::<u64>() {
+                Ok(value) => {
+                    if value > 0 && value <= 10000000 {
+                        let step_string = args.get(3).unwrap_or(&"10000");
+                        let csv = args.get(4).map_or(false, |csv| csv.eq(&"csv"));
+                        match step_string.parse::<u64>() {
+                            Ok(step) => {
+                                let (steps_count, left) = value.div_rem(&step);
+                                for i in 0..steps_count {
+                                    populate_many(
+                                        step as u32,
+                                        drive,
+                                        contract,
+                                        document_type,
+                                        Some(i as u32),
+                                        csv,
+                                    );
+                                }
+                                populate_many(
+                                    left as u32,
+                                    drive,
+                                    contract,
+                                    document_type,
+                                    Some(steps_count as u32),
+                                    csv,
+                                );
+                            }
+                            Err(_) => {
+                                println!("### ERROR! An integer was not provided for the bench performance step");
+                            }
+                        }
+                    } else {
+                        println!("### ERROR! Value must be between 1 and 10 Million");
                     }
                 }
                 Err(_) => {
@@ -168,12 +326,15 @@ fn prompt_populate_full(input: String, drive: &Drive, contract: &Contract) {
                             println!(
                                 "Storage fee: {} ({:.2}¢)",
                                 storage_fee,
-                                (storage_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+                                (storage_fee as f64) * 10_f64.pow(-8) * BYTE_DUFF_COST * DASH_PRICE
                             );
                             println!(
                                 "Processing fee: {} ({:.2}¢)",
                                 processing_fee,
-                                (processing_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
+                                (processing_fee as f64)
+                                    * 10_f64.pow(-8)
+                                    * BYTE_DUFF_COST
+                                    * DASH_PRICE
                             );
                             println!("Time taken: {}", n.as_secs_f64());
                         }
@@ -253,6 +414,7 @@ fn prompt_insert(input: String, drive: &Drive, contract: &Contract) {
                             },
                             true,
                             0f64,
+                            true,
                             Some(&db_transaction),
                         )
                         .expect("document should be inserted");
@@ -310,8 +472,8 @@ fn prompt_delete(input: String, drive: &Drive, contract: &Contract) {
 
 fn prompt_query(input: String, drive: &Drive, contract: &Contract) {
     let query = DriveQuery::from_sql_expr(input.as_str(), &contract).expect("should build query");
-    let results = query.execute_no_proof(&drive.grove, None);
-    if let Ok((results, _)) = results {
+    let results = query.execute_no_proof(&drive, None);
+    if let Ok((results, _, processing_fee)) = results {
         let documents: Vec<Document> = results
             .into_iter()
             .map(|result| {
@@ -319,6 +481,7 @@ fn prompt_query(input: String, drive: &Drive, contract: &Contract) {
                     .expect("we should be able to deserialize the cbor")
             })
             .collect();
+        println!("processing fee is {}", processing_fee);
         print_results(&query.document_type, documents);
     } else {
         println!("invalid query, try again");
@@ -487,8 +650,8 @@ fn all(
         start_at_included: false,
         block_time: None,
     };
-    let (results, _) = query
-        .execute_no_proof(&drive.grove, None)
+    let (results, _, processing_fee) = query
+        .execute_no_proof(&drive, None)
         .expect("proof should be executed");
     println!("result len: {}", results.len());
     let documents: Vec<Document> = results
@@ -498,6 +661,7 @@ fn all(
                 .expect("we should be able to deserialize the cbor")
         })
         .collect();
+    println!("processing fee is {}", processing_fee);
     print_results(&document_type, documents);
 }
 
@@ -565,6 +729,9 @@ fn contract_rl(drive: &Drive, contract: &Contract, rl: &mut Editor<()>) -> bool 
                 true
             } else if input.starts_with("popfull ") || input.starts_with("pf ") {
                 prompt_populate_full(input, &drive, contract);
+                true
+            } else if input.starts_with("benchpop ") || input.starts_with("bp ") {
+                prompt_bench(input, &drive, contract);
                 true
             } else if input.starts_with("all") {
                 prompt_all(input, &drive, &contract);

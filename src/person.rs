@@ -155,6 +155,7 @@ impl Person {
                 },
                 true,
                 0f64,
+                true,
                 Some(db_transaction),
             )
             .expect("document should be inserted")
@@ -304,8 +305,8 @@ fn prompt_delete(input: String, drive: &Drive, contract: &Contract) {
 
 fn prompt_query(input: String, drive: &Drive, contract: &Contract) {
     let query = DriveQuery::from_sql_expr(input.as_str(), &contract).expect("should build query");
-    let results = query.execute_no_proof(&drive.grove, None);
-    if let Ok((results, _)) = results {
+    let results = query.execute_no_proof(&drive, None);
+    if let Ok((results, _, processing_fee)) = results {
         let people: Vec<Person> = results
             .into_iter()
             .map(|result| {
@@ -314,6 +315,7 @@ fn prompt_query(input: String, drive: &Drive, contract: &Contract) {
                 Person::from_document(document)
             })
             .collect();
+        println!("processing fee is {}", processing_fee);
         people.iter().for_each(|person| person.println());
     } else {
         println!("invalid query, try again");
@@ -379,8 +381,8 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &Drive, contract: &Cont
         start_at_included: false,
         block_time: None,
     };
-    let (results, _) = query
-        .execute_no_proof(&drive.grove, None)
+    let (results, _, processing_fee) = query
+        .execute_no_proof(&drive, None)
         .expect("proof should be executed");
     println!("result len: {}", results.len());
     let people: Vec<Person> = results
@@ -391,6 +393,7 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &Drive, contract: &Cont
             Person::from_document(document)
         })
         .collect();
+    println!("processing fee is {}", processing_fee);
     people.iter().for_each(|person| person.println());
 }
 

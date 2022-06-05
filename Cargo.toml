@@ -23,11 +23,12 @@ ciborium = "0.2.0"
 itertools = "0.10.3"
 prettytable-rs = "0.8.0"
 chrono = "0.4.19"
+num-integer = "0.1.45"
 
 [dependencies.rs-drive]
 git = "https://github.com/dashevo/rs-drive"
-branch = "v0.23-dev"
+branch = "feat/recursiveConditionalSubqueries"
 
 [dependencies.grovedb]
 git = "https://github.com/dashevo/grovedb"
-branch = "develop"
+branch = "feat/queryFees"
