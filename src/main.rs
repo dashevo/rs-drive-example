@@ -4,11 +4,9 @@ pub mod person;
 use crate::contract::contract_loop;
 use crate::person::person_loop;
 use crate::ContractType::{DPNSContract, DashPayContract, OtherContract, PersonContract};
-use grovedb::Error;
 use rand::{Rng, SeedableRng};
-use rocksdb::{OptimisticTransactionDB, Transaction};
 use rs_drive::common;
-use rs_drive::contract::{Contract, Document, DocumentType};
+use rs_drive::contract::{Contract, document::Document, DocumentType};
 use rs_drive::drive::Drive;
 use rs_drive::query::{DriveQuery, InternalClauses, OrderClause};
 use rustyline::config::Configurer;
@@ -17,6 +15,7 @@ use std::collections::HashMap;
 use std::default::Default;
 use std::fs;
 use std::path::Path;
+use rs_drive::error::Error;
 use tempdir::TempDir;
 
 pub const LAST_CONTRACT_PATH: &str = "last_contract_path";
@@ -72,7 +71,7 @@ impl Explorer {
             Some(contract_id),
             Some(&db_transaction),
         );
-        drive.grove.commit_transaction(db_transaction)?;
+        drive.commit_transaction(db_transaction)?;
         self.config
             .insert(LAST_CONTRACT_PATH.to_string(), contract_path.to_string());
         self.save_config();

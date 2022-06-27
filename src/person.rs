@@ -1,11 +1,10 @@
-use grovedb::Error;
+use grovedb::{Transaction};
 use indexmap::IndexMap;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rand_distr::num_traits::Pow;
-use rocksdb::{OptimisticTransactionDB, Transaction};
 use rs_drive::common;
-use rs_drive::contract::{Contract, Document, DocumentType};
+use rs_drive::contract::{Contract, document::Document, DocumentType};
 use rs_drive::drive::object_size_info::DocumentInfo::DocumentAndSerialization;
 use rs_drive::drive::object_size_info::{DocumentAndContractInfo, DocumentInfo};
 use rs_drive::drive::Drive;
@@ -17,6 +16,8 @@ use std::collections::HashMap;
 use std::default::Default;
 use std::io::Write;
 use std::time::SystemTime;
+use rs_drive::drive::flags::StorageFlags;
+use rs_drive::error::Error;
 use tempdir::TempDir;
 
 pub const DASH_PRICE: f64 = 127.0;
@@ -134,8 +135,9 @@ impl Person {
         &self,
         drive: &Drive,
         contract: &Contract,
-        db_transaction: &Transaction<OptimisticTransactionDB>,
+        db_transaction: &Transaction,
     ) -> (i64, u64) {
+        let storage_flags = StorageFlags { epoch: 0 };
         let value = serde_json::to_value(&self).expect("serialized person");
         let document_cbor =
             common::value_to_cbor(value, Some(rs_drive::drive::defaults::PROTOCOL_VERSION));
@@ -148,7 +150,7 @@ impl Person {
         drive
             .add_document_for_contract(
                 DocumentAndContractInfo {
-                    document_info: DocumentAndSerialization((&document, &document_cbor)),
+                    document_info: DocumentAndSerialization((&document, &document_cbor, &storage_flags)),
                     contract,
                     document_type,
                     owner_id: None,
@@ -180,7 +182,7 @@ pub fn populate(count: u32, drive: &Drive, contract: &Contract) -> Result<(), Er
     for person in people {
         person.add_on_transaction(drive, contract, &db_transaction);
     }
-    drive.grove.commit_transaction(db_transaction)?;
+    drive.commit_transaction(db_transaction)?;
 
     Ok(())
 }
@@ -295,7 +297,7 @@ fn prompt_delete(input: String, drive: &Drive, contract: &Contract) {
         }
         let id = id.unwrap();
         if drive
-            .delete_document_for_contract(id.as_slice(), contract, "person", None, None)
+            .delete_document_for_contract(id.as_slice(), contract, "person", None, true, None)
             .is_err()
         {
             println!("### ERROR! Could not delete document");
