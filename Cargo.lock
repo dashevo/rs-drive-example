@@ -343,7 +343,10 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 [[package]]
 name = "costs"
 version = "0.0.0"
-source = "git+https://github.com/dashevo/grovedb?branch=develop#6d552d51b0e20354224967ff0fff94bf5f79fc3e"
+source = "git+https://github.com/dashevo/grovedb?branch=feat/worst_case_operations#d0e6b8d8ae0b92b0fb41235ee39e112906081374"
+dependencies = [
+ "storage",
+]
 
 [[package]]
 name = "cpufeatures"
@@ -675,7 +678,7 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 [[package]]
 name = "grovedb"
 version = "0.3.1"
-source = "git+https://github.com/dashevo/grovedb?branch=develop#6d552d51b0e20354224967ff0fff94bf5f79fc3e"
+source = "git+https://github.com/dashevo/grovedb?branch=feat/worst_case_operations#d0e6b8d8ae0b92b0fb41235ee39e112906081374"
 dependencies = [
  "bincode",
  "costs",
@@ -941,7 +944,7 @@ dependencies = [
 [[package]]
 name = "merk"
 version = "1.0.0"
-source = "git+https://github.com/dashevo/grovedb?branch=develop#6d552d51b0e20354224967ff0fff94bf5f79fc3e"
+source = "git+https://github.com/dashevo/grovedb?branch=feat/worst_case_operations#d0e6b8d8ae0b92b0fb41235ee39e112906081374"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1370,7 +1373,7 @@ dependencies = [
 [[package]]
 name = "rs-drive"
 version = "0.23.0-dev.5"
-source = "git+https://github.com/dashevo/rs-drive?branch=feat/feesv4#354a3f7d1cb4fb23fcf325071961b0e05865cae2"
+source = "git+https://github.com/dashevo/rs-drive?branch=feat/IdentityUpgrade#2b73b861fb5abc292e816e4eda2a176eb0011c76"
 dependencies = [
  "array_tool",
  "base64",
@@ -1389,6 +1392,7 @@ dependencies = [
  "rand_distr",
  "serde",
  "serde_json",
+ "sha2",
  "sqlparser",
  "storage",
  "tempfile",
@@ -1618,7 +1622,7 @@ dependencies = [
 [[package]]
 name = "storage"
 version = "0.2.0"
-source = "git+https://github.com/dashevo/grovedb?branch=develop#6d552d51b0e20354224967ff0fff94bf5f79fc3e"
+source = "git+https://github.com/dashevo/grovedb?branch=feat/worst_case_operations#d0e6b8d8ae0b92b0fb41235ee39e112906081374"
 dependencies = [
  "blake3",
  "indexmap",
@@ -1844,7 +1848,7 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "visualize"
 version = "0.1.0"
-source = "git+https://github.com/dashevo/grovedb?branch=develop#6d552d51b0e20354224967ff0fff94bf5f79fc3e"
+source = "git+https://github.com/dashevo/grovedb?branch=feat/worst_case_operations#d0e6b8d8ae0b92b0fb41235ee39e112906081374"
 dependencies = [
  "hex",
  "itertools",

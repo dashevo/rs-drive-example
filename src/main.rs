@@ -1,9 +1,10 @@
 mod contract;
 pub mod person;
+mod identity;
 
 use crate::contract::contract_loop;
 use crate::person::person_loop;
-use crate::ContractType::{DPNSContract, DashPayContract, OtherContract, PersonContract};
+use crate::ContractType::{DPNSContract, DashPayContract, OtherContract, PersonContract, Identity};
 use rand::{Rng, SeedableRng};
 use rs_drive::common;
 use rs_drive::contract::{Contract, document::Document, DocumentType};
@@ -17,6 +18,7 @@ use std::fs;
 use std::path::Path;
 use rs_drive::error::Error;
 use tempdir::TempDir;
+use crate::identity::identity_loop;
 
 pub const LAST_CONTRACT_PATH: &str = "last_contract_path";
 
@@ -97,17 +99,26 @@ impl Explorer {
         &mut self,
         drive: &Drive,
         rl: &mut Editor<()>,
-    ) -> (bool, Option<(ContractType, Contract)>) {
+    ) -> (bool, Option<(ContractType, Option<Contract>)>) {
         let readline = rl.readline("> ");
         match readline {
             Ok(input) => {
-                if input.eq("person") || input.eq("p") {
+                if input.eq("identity") || input.eq("i") {
+                    (
+                        true,
+                        Some((
+                            Identity,
+                            Some(self.load_person_contract(drive)
+                                .expect("expected to load person contract")),
+                        )),
+                    )
+                } else if input.eq("person") || input.eq("p") {
                     (
                         true,
                         Some((
                             PersonContract,
-                            self.load_person_contract(drive)
-                                .expect("expected to load person contract"),
+                            Some(self.load_person_contract(drive)
+                                .expect("expected to load person contract")),
                         )),
                     )
                 } else if input.eq("dashpay") || input.eq("dp") {
@@ -115,8 +126,8 @@ impl Explorer {
                         true,
                         Some((
                             DashPayContract,
-                            self.load_dashpay_contract(drive)
-                                .expect("expected to load person contract"),
+                            Some(self.load_dashpay_contract(drive)
+                                .expect("expected to load person contract")),
                         )),
                     )
                 } else if input.eq("dpns") {
@@ -124,8 +135,8 @@ impl Explorer {
                         true,
                         Some((
                             DPNSContract,
-                            self.load_dpns_contract(drive)
-                                .expect("expected to load person contract"),
+                            Some(self.load_dpns_contract(drive)
+                                .expect("expected to load person contract")),
                         )),
                     )
                 } else if input.starts_with("l ") || input.starts_with("load ") {
@@ -133,7 +144,7 @@ impl Explorer {
                         None => (true, None),
                         Some(contract_path) => {
                             match self.load_contract(drive, contract_path.as_str()) {
-                                Ok(contract) => (true, Some((OtherContract, contract))),
+                                Ok(contract) => (true, Some((OtherContract, Some(contract)))),
                                 Err(_) => {
                                     println!("### ERROR! Issue loading contract");
                                     (true, None)
@@ -143,7 +154,7 @@ impl Explorer {
                     }
                 } else if input == "ll" || input == "loadlast" {
                     match self.load_last_contract(drive) {
-                        Some(contract) => (true, Some((OtherContract, contract))),
+                        Some(contract) => (true, Some((OtherContract, Some(contract)))),
                         None => (true, None),
                     }
                 } else if input == "exit" {
@@ -163,13 +174,14 @@ impl Explorer {
         &mut self,
         drive: &Drive,
         rl: &mut Editor<()>,
-    ) -> (bool, Option<(ContractType, Contract)>) {
+    ) -> (bool, Option<(ContractType, Option<Contract>)>) {
         print_base_options();
         self.base_rl(drive, rl)
     }
 }
 
 enum ContractType {
+    Identity, //Not really a contract
     PersonContract,
     DashPayContract,
     DPNSContract,
@@ -194,6 +206,7 @@ fn print_base_options() {
     println!("### You have the following options : ###");
     println!("########################################");
     println!();
+    println!("### identity / i                    - enter identity explorer");
     println!("### person / p                      - load the person contract");
     println!("### dashpay                         - load the dashpay contract");
     println!("### dpns                            - load the dpns contract");
@@ -223,7 +236,7 @@ fn main() {
     let mut rl = rustyline::Editor::<()>::new();
     rl.set_auto_add_history(true);
 
-    let mut current_contract: Option<(ContractType, Contract)> = None;
+    let mut current_contract: Option<(ContractType, Option<Contract>)> = None;
 
     let mut explorer = Explorer::load_config();
 
@@ -231,14 +244,19 @@ fn main() {
         if current_contract.is_some() {
             match &current_contract {
                 None => {}
-                Some((contract_type, contract)) => match contract_type {
-                    ContractType::PersonContract => {
-                        if !person_loop(&drive, contract, &mut rl) {
+                Some((contract_type, contract_option)) => match contract_type {
+                    Identity => {
+                        if !identity_loop(&drive, &mut rl) {
+                            current_contract = None;
+                        }
+                    }
+                    PersonContract => {
+                        if !person_loop(&drive, contract_option.as_ref().unwrap(), &mut rl) {
                             current_contract = None;
                         }
                     }
                     _ => {
-                        if !contract_loop(&drive, contract, &mut rl) {
+                        if !contract_loop(&drive, contract_option.as_ref().unwrap(), &mut rl) {
                             current_contract = None;
                         }
                     }
