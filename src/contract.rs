@@ -28,7 +28,7 @@ use tempdir::TempDir;
 
 pub const DASH_PRICE: f64 = 100.0;
 
-fn print_contract_format(contract: &Contract) {
+pub(crate) fn print_contract_format(contract: &Contract) {
     for (document_type_name, document_type) in contract.document_types.iter() {
         println!("## {}", document_type_name);
         for property_name in document_type.properties.keys().sorted() {
@@ -110,7 +110,7 @@ pub fn populate_with_documents(
         storage_fee += s;
         processing_fee += p;
     }
-    drive.grove.commit_transaction(db_transaction)?;
+    drive.grove.commit_transaction(db_transaction).unwrap()?;
     Ok((storage_fee, processing_fee))
 }
 
@@ -484,7 +484,7 @@ fn prompt_insert(input: String, drive: &Drive, contract: &Contract) {
                         .map_err(|err| {
                             println!("### ERROR! Unable to commit transaction");
                             println!("### Info {:?}", err);
-                        })
+                        }).unwrap()
                         .expect("expected to commit transaction");
                     if let Ok(n) = SystemTime::now().duration_since(start_time) {
                         print_fees(storage_fee, processing_fee, 1);

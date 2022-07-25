@@ -1,9 +1,10 @@
 mod contract;
 pub mod person;
+pub mod blockchain;
 
 use crate::contract::contract_loop;
 use crate::person::person_loop;
-use crate::ContractType::{DPNSContract, DashPayContract, OtherContract, PersonContract};
+use crate::ContractType::{DashPayContract, DPNSContract, OtherContract, PersonContract};
 use rand::{Rng, SeedableRng};
 use rs_drive::common;
 use rs_drive::contract::{Contract, document::Document, DocumentType};
@@ -11,21 +12,74 @@ use rs_drive::drive::Drive;
 use rs_drive::query::{DriveQuery, InternalClauses, OrderClause};
 use rustyline::config::Configurer;
 use rustyline::Editor;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::default::Default;
 use std::fs;
+use std::ops::Range;
 use std::path::Path;
+use dash_abci::abci::handlers::TenderdashAbci;
+use dash_abci::abci::messages::InitChainRequest;
+use dash_abci::common::helpers::setup::{setup_platform, setup_platform_with_initial_state_structure};
+use dash_abci::platform::Platform;
+use indexmap::IndexMap;
+use intmap::IntMap;
 use rs_drive::error::Error;
 use tempdir::TempDir;
+use crate::ExplorerCommand::{EnterContract, SimulateBlockchain};
+use blockchain::masternode::Masternode;
+use crate::blockchain::strategy::Strategy;
+use crate::ExplorerScreen::{BlockchainScreen, ContractScreen, MainScreen, PersonContractScreen};
 
 pub const LAST_CONTRACT_PATH: &str = "last_contract_path";
 
-struct Explorer {
-    config: HashMap<String, String>,
+#[derive(Clone, Copy, Default)]
+struct Block {
+    pub height: u64,
+    pub time_ms: u64,
 }
 
+enum ExplorerScreen {
+    MainScreen,
+    BlockchainScreen,
+    StrategyScreen,
+    ContractScreen(ContractType, Contract),
+    PersonContractScreen(Contract),
+}
+
+struct Explorer {
+    screen: ExplorerScreen,
+    last_block: Option<Block>,
+    masternodes: IndexMap<[u8;32], Masternode>,
+    current_execution_strategy: Option<(String,Strategy)>,
+    config: HashMap<String, String>,
+    contract_paths: BTreeMap<String, String>, //alias to contract path
+    available_contracts: BTreeMap<String, Contract>, //alias to contract
+    available_strategies: BTreeMap<String, Strategy>, //alias to strategy
+}
+
+enum ExplorerCommand {
+    EnterContract(ContractType, Contract),
+    SimulateBlockchain
+}
+
+fn open_contract(drive: &Drive, contract_path: &str) -> Result<Contract, Error> {
+    let db_transaction = drive.grove.start_transaction();
+
+    let mut rng = rand::rngs::StdRng::from_entropy();
+    let contract_id = rng.gen::<[u8; 32]>();
+    let contract = common::setup_contract(
+        &drive,
+        contract_path,
+        Some(contract_id),
+        Some(&db_transaction),
+    );
+    drive.commit_transaction(db_transaction)?;
+    Ok(contract)
+}
+
+
 impl Explorer {
-    fn load_config() -> Self {
+    fn load_all(platform: &Platform) -> Self {
         let path = Path::new("explorer.config");
 
         let read_result = fs::read(path);
@@ -33,15 +87,52 @@ impl Explorer {
             Ok(data) => bincode::deserialize(&data).expect("config file is corrupted"),
             Err(_) => HashMap::new(),
         };
-        Explorer { config }
+
+        let path = Path::new("explorer.contracts");
+
+        let read_result = fs::read(path);
+        let contract_paths : BTreeMap<String, String> = match read_result {
+            Ok(data) => bincode::deserialize(&data).expect("contracts file is corrupted"),
+            Err(_) => BTreeMap::new(),
+        };
+
+        let available_contracts = contract_paths.iter().filter_map(|(alias, path)| {
+            open_contract(&platform.drive, path).map_or(None, |contract| Some((alias.clone(), contract)))
+        }).collect();
+
+        let path = Path::new("explorer.strategies");
+
+        let read_result = fs::read(path);
+        let available_strategies : BTreeMap<String, Strategy> = match read_result {
+            Ok(data) => bincode::deserialize(&data).expect("contracts file is corrupted"),
+            Err(_) => BTreeMap::new(),
+        };
+
+        Explorer { screen: ExplorerScreen::MainScreen, last_block: None, masternodes: IndexMap::default(), current_execution_strategy: None, config, contract_paths, available_contracts, available_strategies }
     }
 
     fn save_config(&self) {
         let config =
-            bincode::serialize(&self.config).expect("unable to serialize root leaves data");
+            bincode::serialize(&self.config).expect("unable to serialize config");
         let path = Path::new("explorer.config");
 
         fs::write(path, config).unwrap();
+    }
+
+    fn save_available_contracts(&self) {
+        let contracts =
+            bincode::serialize(&self.contract_paths).expect("unable to serialize contract paths");
+        let path = Path::new("explorer.contracts");
+
+        fs::write(path, contracts).unwrap();
+    }
+
+    fn save_available_strategies(&self) {
+        let strategies =
+            bincode::serialize(&self.available_strategies).expect("unable to serialize strategies");
+        let path = Path::new("explorer.strategies");
+
+        fs::write(path, strategies).unwrap();
     }
 
     fn load_last_contract(&self, drive: &Drive) -> Option<Contract> {
@@ -56,7 +147,7 @@ impl Explorer {
             Some(contract_id),
             Some(&db_transaction),
         );
-        drive.grove.commit_transaction(db_transaction).ok();
+        drive.grove.commit_transaction(db_transaction).unwrap().expect("expected to commit transaction");
         Some(contract)
     }
 
@@ -97,14 +188,14 @@ impl Explorer {
         &mut self,
         drive: &Drive,
         rl: &mut Editor<()>,
-    ) -> (bool, Option<(ContractType, Contract)>) {
+    ) -> (bool, Option<ExplorerCommand>) {
         let readline = rl.readline("> ");
         match readline {
             Ok(input) => {
                 if input.eq("person") || input.eq("p") {
                     (
                         true,
-                        Some((
+                        Some(EnterContract(
                             PersonContract,
                             self.load_person_contract(drive)
                                 .expect("expected to load person contract"),
@@ -113,7 +204,7 @@ impl Explorer {
                 } else if input.eq("dashpay") || input.eq("dp") {
                     (
                         true,
-                        Some((
+                        Some(EnterContract(
                             DashPayContract,
                             self.load_dashpay_contract(drive)
                                 .expect("expected to load person contract"),
@@ -122,7 +213,7 @@ impl Explorer {
                 } else if input.eq("dpns") {
                     (
                         true,
-                        Some((
+                        Some(EnterContract(
                             DPNSContract,
                             self.load_dpns_contract(drive)
                                 .expect("expected to load person contract"),
@@ -133,7 +224,7 @@ impl Explorer {
                         None => (true, None),
                         Some(contract_path) => {
                             match self.load_contract(drive, contract_path.as_str()) {
-                                Ok(contract) => (true, Some((OtherContract, contract))),
+                                Ok(contract) => (true, Some(EnterContract(OtherContract, contract))),
                                 Err(_) => {
                                     println!("### ERROR! Issue loading contract");
                                     (true, None)
@@ -143,9 +234,11 @@ impl Explorer {
                     }
                 } else if input == "ll" || input == "loadlast" {
                     match self.load_last_contract(drive) {
-                        Some(contract) => (true, Some((OtherContract, contract))),
+                        Some(contract) => (true, Some(EnterContract(OtherContract, contract))),
                         None => (true, None),
                     }
+                } else if input == "b" || input == "blockchain" {
+                    (true, Some(SimulateBlockchain))
                 } else if input == "exit" {
                     (false, None)
                 } else {
@@ -163,7 +256,7 @@ impl Explorer {
         &mut self,
         drive: &Drive,
         rl: &mut Editor<()>,
-    ) -> (bool, Option<(ContractType, Contract)>) {
+    ) -> (bool, Option<ExplorerCommand>) {
         print_base_options();
         self.base_rl(drive, rl)
     }
@@ -194,6 +287,7 @@ fn print_base_options() {
     println!("### You have the following options : ###");
     println!("########################################");
     println!();
+    println!("### blockchain / b                  - simulate blockchain execution");
     println!("### person / p                      - load the person contract");
     println!("### dashpay                         - load the dashpay contract");
     println!("### dpns                            - load the dpns contract");
@@ -215,42 +309,56 @@ fn prompt_load_contract(input: String) -> Option<String> {
 fn main() {
     print_welcome();
     // setup code
-    let tmp_dir = TempDir::new("family").unwrap();
-    let drive: Drive = Drive::open(&tmp_dir).expect("expected to open Drive successfully");
+    let platform = setup_platform();
 
-    drive.create_root_tree(None);
+    platform.init_chain(InitChainRequest{}, None).expect("expected to init chain");
 
     let mut rl = rustyline::Editor::<()>::new();
     rl.set_auto_add_history(true);
 
-    let mut current_contract: Option<(ContractType, Contract)> = None;
+    let mut explorer = Explorer::load_all(&platform);
 
-    let mut explorer = Explorer::load_config();
+    let mut testing_blockchain = false;
 
     loop {
-        if current_contract.is_some() {
-            match &current_contract {
-                None => {}
-                Some((contract_type, contract)) => match contract_type {
-                    ContractType::PersonContract => {
-                        if !person_loop(&drive, contract, &mut rl) {
-                            current_contract = None;
+        match &explorer.screen {
+            MainScreen => {
+                let base_result = explorer.base_loop(&platform.drive, &mut rl);
+                match base_result.0 {
+                    true => {
+                        match base_result.1 {
+                            None => {}
+                            Some(command) => {
+                                match command {
+                                    EnterContract(contract_type, contract) => {
+                                        explorer.screen = ContractScreen(contract_type, contract);
+                                    }
+                                    SimulateBlockchain => {
+                                        explorer.screen = BlockchainScreen;
+                                        testing_blockchain = true;
+                                    }
+                                }
+                            }
                         }
                     }
-                    _ => {
-                        if !contract_loop(&drive, contract, &mut rl) {
-                            current_contract = None;
-                        }
-                    }
-                },
-            }
-        } else {
-            let base_result = explorer.base_loop(&drive, &mut rl);
-            match base_result.0 {
-                true => {
-                    current_contract = base_result.1;
+                    false => break, //exit from app
                 }
-                false => break,
+            }
+            BlockchainScreen => {
+                explorer.screen = explorer.blockchain_loop(&platform, &mut rl);
+            }
+            StrategyScreen => {
+                explorer.screen = explorer.strategy_loop(&platform, &mut rl);
+            }
+            ContractScreen(contract_type, contract) => {
+                if !contract_loop(&platform.drive, contract, &mut rl) {
+                    explorer.screen = MainScreen;
+                }
+            }
+            PersonContractScreen(contract) => {
+                if !person_loop(&platform.drive, contract, &mut rl) {
+                    explorer.screen = MainScreen;
+                }
             }
         }
     }

@@ -1,4 +1,4 @@
-use grovedb::{Transaction};
+use rs_drive::grovedb::{Transaction};
 use indexmap::IndexMap;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
@@ -126,7 +126,7 @@ impl Person {
             .map_err(|err| {
                 println!("### ERROR! Unable to commit transaction");
                 println!("### Info {:?}", err);
-            })
+            }).unwrap()
             .expect("expected to commit transaction");
         result
     }

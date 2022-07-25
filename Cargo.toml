@@ -23,11 +23,12 @@ itertools = "0.10.3"
 prettytable-rs = "0.8.0"
 chrono = "0.4.19"
 num-integer = "0.1.45"
+intmap = "2.0.0"
 
 [dependencies.rs-drive]
 git = "https://github.com/dashevo/rs-drive"
-branch = "feat/feesv4"
+branch = "feet/poolsV4"
 
-[dependencies.grovedb]
-git = "https://github.com/dashevo/grovedb"
-branch = "develop"
+[dependencies.dash-abci]
+git = "https://github.com/dashevo/rs-drive"
+branch = "feet/poolsV4"
