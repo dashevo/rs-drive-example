@@ -9,8 +9,7 @@ use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rand_distr::num_traits::Pow;
 use rs_drive::common;
-use rs_drive::contract::types::DocumentFieldType;
-use rs_drive::contract::{Contract, document::Document, DocumentType};
+use rs_drive::drive::flags::StorageFlags;
 use rs_drive::drive::object_size_info::DocumentInfo::DocumentAndSerialization;
 use rs_drive::drive::object_size_info::{DocumentAndContractInfo, DocumentInfo};
 use rs_drive::drive::Drive;
@@ -23,13 +22,16 @@ use std::collections::{BTreeMap, HashMap};
 use std::default::Default;
 use std::io::Write;
 use std::time::SystemTime;
-use rs_drive::drive::flags::StorageFlags;
+use rs_drive::contract::document::Document;
+use rs_drive::contract::{CreateRandomDocument, DocumentFieldType, DocumentType};
+use rs_drive::dpp::data_contract::DataContract as Contract;
+use rs_drive::dpp::data_contract::extra::DriveContractExt;
 use tempdir::TempDir;
 
 pub const DASH_PRICE: f64 = 100.0;
 
 pub(crate) fn print_contract_format(contract: &Contract) {
-    for (document_type_name, document_type) in contract.document_types.iter() {
+    for (document_type_name, document_type) in contract.document_types().iter() {
         println!("## {}", document_type_name);
         for property_name in document_type.properties.keys().sorted() {
             let document_field = document_type.properties.get(property_name).unwrap();
@@ -193,9 +195,25 @@ fn populate_many(
 ) {
     let documents = document_type.random_documents(count, None);
     if include_worst_case {
-        populate_documents_with_descriptions(documents.clone(), drive, contract, document_type, i, export_csv, false);
+        populate_documents_with_descriptions(
+            documents.clone(),
+            drive,
+            contract,
+            document_type,
+            i,
+            export_csv,
+            false,
+        );
     }
-    populate_documents_with_descriptions(documents, drive, contract, document_type, i, export_csv, true);
+    populate_documents_with_descriptions(
+        documents,
+        drive,
+        contract,
+        document_type,
+        i,
+        export_csv,
+        true,
+    );
 }
 
 fn print_fees(storage_fee: i64, processing_fee: u64, count: u32) {
@@ -209,13 +227,8 @@ fn print_fees(storage_fee: i64, processing_fee: u64, count: u32) {
                 cent_cost / (count as f64),
             );
         } else {
-            println!(
-                "Storage fee: {} ({:.2}¢",
-                storage_fee,
-                cent_cost,
-            );
+            println!("Storage fee: {} ({:.2}¢", storage_fee, cent_cost,);
         }
-
     } else {
         if count > 1 {
             println!(
@@ -225,11 +238,7 @@ fn print_fees(storage_fee: i64, processing_fee: u64, count: u32) {
                 cent_cost / (count as f64),
             );
         } else {
-            println!(
-                "Storage fee: {} ({:.2}$",
-                storage_fee,
-                cent_cost / 100f64,
-            );
+            println!("Storage fee: {} ({:.2}$", storage_fee, cent_cost / 100f64,);
         }
     }
 
@@ -248,7 +257,6 @@ fn print_fees(storage_fee: i64, processing_fee: u64, count: u32) {
             (processing_fee as f64) * 10_f64.pow(-9) * DASH_PRICE
         );
     }
-
 }
 
 fn populate_documents_with_descriptions(
@@ -302,9 +310,19 @@ fn prompt_populate(input: String, drive: &Drive, contract: &Contract) {
         match document_type {
             Ok(document_type) => match count_str.parse::<u32>() {
                 Ok(value) => {
-                    let include_worst_case = args.get(3).map_or(false, |csv| csv.eq(&"include_worst_case"));
+                    let include_worst_case = args
+                        .get(3)
+                        .map_or(false, |csv| csv.eq(&"include_worst_case"));
                     if value > 0 && value <= 10000 {
-                        populate_many(value, drive, contract, document_type, None, false, include_worst_case);
+                        populate_many(
+                            value,
+                            drive,
+                            contract,
+                            document_type,
+                            None,
+                            false,
+                            include_worst_case,
+                        );
                     } else {
                         println!("### ERROR! Value must be between 1 and 10000");
                     }
@@ -389,9 +407,14 @@ fn prompt_populate_full(input: String, drive: &Drive, contract: &Contract) {
                     if value > 0 && value <= 10000 {
                         let documents = document_type.random_filled_documents(value, None);
                         let start_time = SystemTime::now();
-                        let (storage_fee, processing_fee) =
-                            populate_with_documents(documents, drive, document_type, contract, true)
-                                .expect("populate returned an error");
+                        let (storage_fee, processing_fee) = populate_with_documents(
+                            documents,
+                            drive,
+                            document_type,
+                            contract,
+                            true,
+                        )
+                        .expect("populate returned an error");
                         if let Ok(n) = SystemTime::now().duration_since(start_time) {
                             print_fees(storage_fee, processing_fee, value as u32);
                             println!("Time taken: {}", n.as_secs_f64());
@@ -439,7 +462,8 @@ fn prompt_insert(input: String, drive: &Drive, contract: &Contract) {
                     {
                         let value = split.get(i).unwrap();
                         let property_field = document_type.properties.get(property_name).unwrap();
-                        let value: Value = property_field.document_type
+                        let value: Value = property_field
+                            .document_type
                             .value_from_string(value)
                             .expect("expected to get a value");
                         hashmap.insert(property_name.clone(), value);
@@ -484,7 +508,8 @@ fn prompt_insert(input: String, drive: &Drive, contract: &Contract) {
                         .map_err(|err| {
                             println!("### ERROR! Unable to commit transaction");
                             println!("### Info {:?}", err);
-                        }).unwrap()
+                        })
+                        .unwrap()
                         .expect("expected to commit transaction");
                     if let Ok(n) = SystemTime::now().duration_since(start_time) {
                         print_fees(storage_fee, processing_fee, 1);
@@ -513,7 +538,14 @@ fn prompt_delete(input: String, drive: &Drive, contract: &Contract) {
         }
         let id = id.unwrap();
         if drive
-            .delete_document_for_contract(id.as_slice(), contract, document_type_name, None, true, None)
+            .delete_document_for_contract(
+                id.as_slice(),
+                contract,
+                document_type_name,
+                None,
+                true,
+                None,
+            )
             .is_err()
         {
             println!("### ERROR! Could not delete document");

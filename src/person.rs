@@ -1,13 +1,15 @@
-use rs_drive::grovedb::{Transaction};
 use indexmap::IndexMap;
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rand_distr::num_traits::Pow;
 use rs_drive::common;
-use rs_drive::contract::{Contract, document::Document, DocumentType};
+use rs_drive::contract::{document::Document, Contract, DocumentType};
+use rs_drive::drive::flags::StorageFlags;
 use rs_drive::drive::object_size_info::DocumentInfo::DocumentAndSerialization;
 use rs_drive::drive::object_size_info::{DocumentAndContractInfo, DocumentInfo};
 use rs_drive::drive::Drive;
+use rs_drive::error::Error;
+use rs_drive::grovedb::Transaction;
 use rs_drive::query::{DriveQuery, InternalClauses, OrderClause};
 use rustyline::config::Configurer;
 use rustyline::Editor;
@@ -16,8 +18,7 @@ use std::collections::HashMap;
 use std::default::Default;
 use std::io::Write;
 use std::time::SystemTime;
-use rs_drive::drive::flags::StorageFlags;
-use rs_drive::error::Error;
+use rs_drive::dpp::data_contract::extra::DriveContractExt;
 use tempdir::TempDir;
 
 pub const DASH_PRICE: f64 = 127.0;
@@ -126,7 +127,8 @@ impl Person {
             .map_err(|err| {
                 println!("### ERROR! Unable to commit transaction");
                 println!("### Info {:?}", err);
-            }).unwrap()
+            })
+            .unwrap()
             .expect("expected to commit transaction");
         result
     }
@@ -150,7 +152,11 @@ impl Person {
         drive
             .add_document_for_contract(
                 DocumentAndContractInfo {
-                    document_info: DocumentAndSerialization((&document, &document_cbor, &storage_flags)),
+                    document_info: DocumentAndSerialization((
+                        &document,
+                        &document_cbor,
+                        &storage_flags,
+                    )),
                     contract,
                     document_type,
                     owner_id: None,
@@ -369,7 +375,7 @@ fn all(order_by_strings: Vec<String>, limit: u16, drive: &Drive, contract: &Cont
         })
         .collect::<IndexMap<String, OrderClause>>();
     let person_document_type = contract
-        .document_types
+        .document_types()
         .get("person")
         .expect("contract should have a person document type");
     let query = DriveQuery {

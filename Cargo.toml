@@ -27,8 +27,8 @@ intmap = "2.0.0"
 
 [dependencies.rs-drive]
 git = "https://github.com/dashevo/rs-drive"
-branch = "feet/poolsV4"
+branch = "feat/pools"
 
 [dependencies.dash-abci]
 git = "https://github.com/dashevo/rs-drive"
-branch = "feet/poolsV4"
+branch = "feat/pools"

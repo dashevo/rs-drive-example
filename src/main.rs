@@ -1,14 +1,28 @@
+pub mod blockchain;
 mod contract;
 pub mod person;
-pub mod blockchain;
 
+use crate::blockchain::strategy::Strategy;
 use crate::contract::contract_loop;
 use crate::person::person_loop;
-use crate::ContractType::{DashPayContract, DPNSContract, OtherContract, PersonContract};
+use crate::ContractType::{DPNSContract, DashPayContract, OtherContract, PersonContract};
+use crate::ExplorerCommand::{EnterContract, SimulateBlockchain};
+use crate::ExplorerScreen::{BlockchainScreen, ContractScreen, MainScreen, PersonContractScreen};
+use blockchain::masternode::Masternode;
+use dash_abci::abci::handlers::TenderdashAbci;
+use dash_abci::abci::messages::InitChainRequest;
+use dash_abci::common::helpers::setup::{
+    setup_platform, setup_platform_with_initial_state_structure,
+};
+use dash_abci::platform::Platform;
+use indexmap::IndexMap;
+use intmap::IntMap;
 use rand::{Rng, SeedableRng};
 use rs_drive::common;
-use rs_drive::contract::{Contract, document::Document, DocumentType};
+use rs_drive::contract::{document::Document, Contract, DocumentType};
 use rs_drive::drive::Drive;
+use rs_drive::error::Error;
+use rs_drive::fee_pools::epochs::Epoch;
 use rs_drive::query::{DriveQuery, InternalClauses, OrderClause};
 use rustyline::config::Configurer;
 use rustyline::Editor;
@@ -17,18 +31,7 @@ use std::default::Default;
 use std::fs;
 use std::ops::Range;
 use std::path::Path;
-use dash_abci::abci::handlers::TenderdashAbci;
-use dash_abci::abci::messages::InitChainRequest;
-use dash_abci::common::helpers::setup::{setup_platform, setup_platform_with_initial_state_structure};
-use dash_abci::platform::Platform;
-use indexmap::IndexMap;
-use intmap::IntMap;
-use rs_drive::error::Error;
 use tempdir::TempDir;
-use crate::ExplorerCommand::{EnterContract, SimulateBlockchain};
-use blockchain::masternode::Masternode;
-use crate::blockchain::strategy::Strategy;
-use crate::ExplorerScreen::{BlockchainScreen, ContractScreen, MainScreen, PersonContractScreen};
 
 pub const LAST_CONTRACT_PATH: &str = "last_contract_path";
 
@@ -49,8 +52,9 @@ enum ExplorerScreen {
 struct Explorer {
     screen: ExplorerScreen,
     last_block: Option<Block>,
-    masternodes: IndexMap<[u8;32], Masternode>,
-    current_execution_strategy: Option<(String,Strategy)>,
+    current_epoch: Option<Epoch>,
+    masternodes: IndexMap<[u8; 32], Masternode>,
+    current_execution_strategy: Option<(String, Strategy)>,
     config: HashMap<String, String>,
     contract_paths: BTreeMap<String, String>, //alias to contract path
     available_contracts: BTreeMap<String, Contract>, //alias to contract
@@ -59,7 +63,7 @@ struct Explorer {
 
 enum ExplorerCommand {
     EnterContract(ContractType, Contract),
-    SimulateBlockchain
+    SimulateBlockchain,
 }
 
 fn open_contract(drive: &Drive, contract_path: &str) -> Result<Contract, Error> {
@@ -77,7 +81,6 @@ fn open_contract(drive: &Drive, contract_path: &str) -> Result<Contract, Error> 
     Ok(contract)
 }
 
-
 impl Explorer {
     fn load_all(platform: &Platform) -> Self {
         let path = Path::new("explorer.config");
@@ -91,29 +94,42 @@ impl Explorer {
         let path = Path::new("explorer.contracts");
 
         let read_result = fs::read(path);
-        let contract_paths : BTreeMap<String, String> = match read_result {
+        let contract_paths: BTreeMap<String, String> = match read_result {
             Ok(data) => bincode::deserialize(&data).expect("contracts file is corrupted"),
             Err(_) => BTreeMap::new(),
         };
 
-        let available_contracts = contract_paths.iter().filter_map(|(alias, path)| {
-            open_contract(&platform.drive, path).map_or(None, |contract| Some((alias.clone(), contract)))
-        }).collect();
+        let available_contracts = contract_paths
+            .iter()
+            .filter_map(|(alias, path)| {
+                open_contract(&platform.drive, path)
+                    .map_or(None, |contract| Some((alias.clone(), contract)))
+            })
+            .collect();
 
         let path = Path::new("explorer.strategies");
 
         let read_result = fs::read(path);
-        let available_strategies : BTreeMap<String, Strategy> = match read_result {
+        let available_strategies: BTreeMap<String, Strategy> = match read_result {
             Ok(data) => bincode::deserialize(&data).expect("contracts file is corrupted"),
             Err(_) => BTreeMap::new(),
         };
 
-        Explorer { screen: ExplorerScreen::MainScreen, last_block: None, masternodes: IndexMap::default(), current_execution_strategy: None, config, contract_paths, available_contracts, available_strategies }
+        Explorer {
+            screen: MainScreen,
+            last_block: None,
+            current_epoch: None,
+            masternodes: IndexMap::default(),
+            current_execution_strategy: None,
+            config,
+            contract_paths,
+            available_contracts,
+            available_strategies,
+        }
     }
 
     fn save_config(&self) {
-        let config =
-            bincode::serialize(&self.config).expect("unable to serialize config");
+        let config = bincode::serialize(&self.config).expect("unable to serialize config");
         let path = Path::new("explorer.config");
 
         fs::write(path, config).unwrap();
@@ -147,7 +163,11 @@ impl Explorer {
             Some(contract_id),
             Some(&db_transaction),
         );
-        drive.grove.commit_transaction(db_transaction).unwrap().expect("expected to commit transaction");
+        drive
+            .grove
+            .commit_transaction(db_transaction)
+            .unwrap()
+            .expect("expected to commit transaction");
         Some(contract)
     }
 
@@ -184,11 +204,7 @@ impl Explorer {
         self.load_contract(drive, "src/supporting_files/contract/dpns-contract.json")
     }
 
-    fn base_rl(
-        &mut self,
-        drive: &Drive,
-        rl: &mut Editor<()>,
-    ) -> (bool, Option<ExplorerCommand>) {
+    fn base_rl(&mut self, drive: &Drive, rl: &mut Editor<()>) -> (bool, Option<ExplorerCommand>) {
         let readline = rl.readline("> ");
         match readline {
             Ok(input) => {
@@ -224,7 +240,9 @@ impl Explorer {
                         None => (true, None),
                         Some(contract_path) => {
                             match self.load_contract(drive, contract_path.as_str()) {
-                                Ok(contract) => (true, Some(EnterContract(OtherContract, contract))),
+                                Ok(contract) => {
+                                    (true, Some(EnterContract(OtherContract, contract)))
+                                }
                                 Err(_) => {
                                     println!("### ERROR! Issue loading contract");
                                     (true, None)
@@ -252,11 +270,7 @@ impl Explorer {
         }
     }
 
-    fn base_loop(
-        &mut self,
-        drive: &Drive,
-        rl: &mut Editor<()>,
-    ) -> (bool, Option<ExplorerCommand>) {
+    fn base_loop(&mut self, drive: &Drive, rl: &mut Editor<()>) -> (bool, Option<ExplorerCommand>) {
         print_base_options();
         self.base_rl(drive, rl)
     }
@@ -311,7 +325,9 @@ fn main() {
     // setup code
     let platform = setup_platform();
 
-    platform.init_chain(InitChainRequest{}, None).expect("expected to init chain");
+    platform
+        .init_chain(InitChainRequest {}, None)
+        .expect("expected to init chain");
 
     let mut rl = rustyline::Editor::<()>::new();
     rl.set_auto_add_history(true);
@@ -325,22 +341,18 @@ fn main() {
             MainScreen => {
                 let base_result = explorer.base_loop(&platform.drive, &mut rl);
                 match base_result.0 {
-                    true => {
-                        match base_result.1 {
-                            None => {}
-                            Some(command) => {
-                                match command {
-                                    EnterContract(contract_type, contract) => {
-                                        explorer.screen = ContractScreen(contract_type, contract);
-                                    }
-                                    SimulateBlockchain => {
-                                        explorer.screen = BlockchainScreen;
-                                        testing_blockchain = true;
-                                    }
-                                }
+                    true => match base_result.1 {
+                        None => {}
+                        Some(command) => match command {
+                            EnterContract(contract_type, contract) => {
+                                explorer.screen = ContractScreen(contract_type, contract);
                             }
-                        }
-                    }
+                            SimulateBlockchain => {
+                                explorer.screen = BlockchainScreen;
+                                testing_blockchain = true;
+                            }
+                        },
+                    },
                     false => break, //exit from app
                 }
             }
